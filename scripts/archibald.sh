@@ -1,0 +1,1 @@
+python assigner.py --config ./configs/archibald.yaml --test

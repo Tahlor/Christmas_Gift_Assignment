@@ -1,0 +1,10 @@
+.vscode/
+
+credentials.json
+token.pickle
+credentials/
+
+Archive/
+
+configs/*.yaml
+!config.example.yaml

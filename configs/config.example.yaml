@@ -1,0 +1,14 @@
+spreadsheet:
+  id: "EXAMPLE_ID"
+  sheet_name: "Family"
+
+family_names:
+  "0": "John and Mary Anderson"
+  "1": "James and Catherine Adams"
+  "2": "Edward and Elizabeth Abbott"
+  "3": "Thomas and Katherine Allen"
+  "4": "David and Alice Armstrong"
+  "5": "Michael and Hannah Smith"
+
+exclusions:
+  - "0" 
