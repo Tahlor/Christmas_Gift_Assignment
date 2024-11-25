@@ -8,3 +8,5 @@ Archive/
 
 configs/*.yaml
 !config.example.yaml
+
+*.pyc

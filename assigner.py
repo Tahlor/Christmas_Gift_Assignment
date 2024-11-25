@@ -12,7 +12,7 @@ from general_tools.my_email import email as send_email
 import sys
 import yaml
 import argparse
-from assignment_algorithms import best_algorithm, validate_assignments
+from utils.assignment_algorithms import best_algorithm, validate_assignments
 
 class FamilyGiftExchange:
     def __init__(self, config_path: str, test_mode: bool = False):        
@@ -140,16 +140,18 @@ To create one: https://console.cloud.google.com/apis/credentials?project=fit-dri
         if exclude is None:
             exclude = self.config.get('exclusions', [])
         
-        family_ids = [fid for fid in self.family_ids if not exclude or fid not in exclude]
+        family_ids = sorted([fid for fid in self.family_ids if not exclude or fid not in exclude])
         
         self.assignments = best_algorithm(family_ids, seed_value)
         assert validate_assignments(family_ids, self.assignments)
-
-        if self.test_mode:
-            if verbose:
-                print("\nAssignments:")
-                for giver, receiver in self.assignments.items():
-                    print(f"{self.family_names[giver]} -> {self.family_names[receiver]}")
+        self.print_assignments(verbose)
+    
+    def print_assignments(self, verbose: bool = False) -> None:
+        if verbose and self.test_mode:
+            print("\nAssignments:")
+            sorted_assignments = sorted(self.assignments.items(), key=lambda x: self.family_names[x[0]])
+            for giver, receiver in sorted_assignments:
+                print(f"{self.family_names[giver]} -> {self.family_names[receiver]}")
         else:
             print(f"\nCreated assignments for {len(self.assignments)} families")
 
@@ -180,12 +182,12 @@ To create one: https://console.cloud.google.com/apis/credentials?project=fit-dri
                         msg_text=message
                     )
 
-    def _compose_message(self, giver_id: str, receiver_id: str, is_reminder: bool) -> str:
+    def _compose_message(self, giver_id: str, receiver_id: str, is_reminder: bool, year: int) -> str:
         """Create email message text"""
         prefix = "REMINDER: " if is_reminder else ""
         receiver_names = self.family_names.get(receiver_id, receiver_id)
         return f"""
-{prefix}Christmas Gift Exchange Assignment
+{prefix}Christmas Gift Exchange Assignment for {year}
 
 You are giving to the family of: {receiver_names}
 
@@ -201,8 +203,12 @@ def main():
                       help='Path to config file (default: ./config.yaml)')
     parser.add_argument('--test', action='store_true',
                       help='Run in test mode')
+    parser.add_argument('--reminder', action='store_true',
+                      help='Send reminder emails instead of initial assignments')
     parser.add_argument('--montecarlo-test', action='store_true',
                       help='Run tests on assignment distribution')
+    parser.add_argument('--year', type=int,
+                      help='Manually override the year used for random seed')
     args = parser.parse_args()
 
     exchange = FamilyGiftExchange(config_path=args.config, test_mode=args.test)
@@ -212,9 +218,13 @@ def main():
         montecarlo_test()
         return
 
-    current_year = datetime.now().year
-    if args.test:
-        current_year -= random.randint(0, 58)
+    # Use manually specified year if provided, otherwise use current year
+    if args.year:
+        seed_year = args.year
+    else:
+        seed_year = datetime.now().year
+        if args.test:
+            seed_year -= random.randint(0, 58)
 
     print("\nFamily Addresses:")
     for family_id, address in exchange.family_addresses.items():
@@ -224,8 +234,9 @@ def main():
     for email, family_id in exchange.email_to_family.items():
         print(f"{email}: {family_id}")
     
-    exchange.make_assignments(exclude='0JMA', seed_value=current_year, verbose=True)
-    exchange.send_assignment_emails()
+    exchange.make_assignments(exclude='0JMA', seed_value=seed_year, verbose=True)
+    exchange.send_assignment_emails(is_reminder=args.reminder, year=seed_year)
+    exchange.print_assignments(verbose=True)
 
 def montecarlo_test():
     exchange = FamilyGiftExchange(config_path='./configs/config.example.yaml', test_mode=True)

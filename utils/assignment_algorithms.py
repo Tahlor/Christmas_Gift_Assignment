@@ -6,7 +6,16 @@ from random import shuffle, seed, choice
 def set_seed(seed_value: int | None):
     if seed_value is not None:
         seed(seed_value)
+        print(f"Seeding with {seed_value}")
 
+def algorithm_wrapper(func: Callable) -> Callable:
+    """Wrapper to ensure family_ids are sorted before running the algorithm"""
+    def wrapped(family_ids: List[str], seed_value: int | None = None) -> Dict[str, str]:
+        sorted_ids = sorted(family_ids)
+        return func(sorted_ids, seed_value)
+    return wrapped
+
+@algorithm_wrapper
 def random_choice_with_removal_shuffled(family_ids: List[str], seed_value: int = None) -> Dict[str, str]:
     """Current algorithm from assigner.py - Picks random receiver and removes from pool"""
     set_seed(seed_value)
@@ -16,7 +25,7 @@ def random_choice_with_removal_shuffled(family_ids: List[str], seed_value: int =
         shuffle(family_ids)
         valid = True
         assignments = {}
-        
+
         for giver in family_ids:
             possible_receivers = [r for r in receiving_ids if r != giver]
             if not possible_receivers:
@@ -29,6 +38,7 @@ def random_choice_with_removal_shuffled(family_ids: List[str], seed_value: int =
         if valid:
             return assignments
 
+@algorithm_wrapper
 def random_choice_with_removal_no_shuffle(family_ids: List[str], seed_value: int) -> Dict[str, str]:
     """Alternative implementation of random choice with removal
     
@@ -61,6 +71,7 @@ def random_choice_with_removal_no_shuffle(family_ids: List[str], seed_value: int
         if valid:
             return assignments
 
+@algorithm_wrapper
 def smart_last_choice_with_shuffle(family_ids: List[str], seed_value: int) -> Dict[str, str]:
     """
     INVALID ALGORITHM WITHOUT SHUFFLE:
@@ -91,6 +102,7 @@ def smart_last_choice_with_shuffle(family_ids: List[str], seed_value: int) -> Di
 def validate_assignments(family_ids, assignments: Dict[str, str]) -> bool:
     return all(assignments[giver] != giver for giver in assignments) and len(assignments) == len(family_ids)
 
+@algorithm_wrapper
 def shuffle_first_valid(family_ids: List[str], seed_value: int) -> Dict[str, str]:
     """Shuffle receivers and take first valid option
     
@@ -130,6 +142,7 @@ def shuffle_first_valid(family_ids: List[str], seed_value: int) -> Dict[str, str
         if valid:
             return assignments
 
+@algorithm_wrapper
 def double_shuffle(family_ids: List[str], seed_value: int) -> Dict[str, str]:
     """Shuffle receivers and take first valid option"""
     set_seed(seed_value)
@@ -153,6 +166,7 @@ def double_shuffle(family_ids: List[str], seed_value: int) -> Dict[str, str]:
         if valid:
             return assignments
 
+@algorithm_wrapper
 def shuffle_and_zip(family_ids: List[str], seed_value: int) -> Dict[str, str]:
     """Simple shuffle and zip approach - Shuffles once and zips with original"""
     set_seed(seed_value)
