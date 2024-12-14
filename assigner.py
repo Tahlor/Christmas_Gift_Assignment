@@ -13,12 +13,15 @@ import sys
 import yaml
 import argparse
 from utils.assignment_algorithms import best_algorithm, validate_assignments
+from tqdm import tqdm
+from load_from_gsheets import load_gift_preferences, load_family_addresses, create_service
 
 class FamilyGiftExchange:
     def __init__(self, config_path: str, test_mode: bool = False):        
         self.family_addresses: Dict[str, str] = {}
         self.email_to_family: Dict[str, str] = {}
         self.test_mode = test_mode
+        self.gift_preferences: Dict[str, List[str]] = {}
         
         # Load config from specified path
         config_path = Path(config_path)
@@ -30,47 +33,10 @@ class FamilyGiftExchange:
         
         self.family_names = self.config['family_names']
         self.family_ids: List[str] = set(self.family_names.keys())
+        self.gsheets_service = create_service()
 
     def load_data(self) -> None:
-        """Load family data from Google Sheet"""
-        creds = None
-        token_path = Path('./credentials/token.pickle')
-        # The file token.pickle stores the user's access and refresh tokens
-        if token_path.exists():
-            with token_path.open('rb') as token:
-                creds = pickle.load(token)
-                
-        # If there are no (valid) credentials available, let the user log in
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                credentials_path = Path('./credentials/credentials.json')
-                if not credentials_path.exists():
-                    print("""
-Error: credentials.json not found!
-To create one: https://console.cloud.google.com/apis/credentials?project=fit-drive-237820
-                    """)
-                    sys.exit(1)
-                    
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(credentials_path),
-                    ['https://www.googleapis.com/auth/spreadsheets.readonly']
-                )
-                creds = flow.run_local_server(port=0)
-                
-            # Save the credentials for the next run
-            with token_path.open('wb') as token:
-                pickle.dump(creds, token)
-        
-        service = build('sheets', 'v4', credentials=creds)
-        sheet = service.spreadsheets()
-        
-        result = sheet.values().get(
-            spreadsheetId=self.config['spreadsheet']['id'],
-            range=f"{self.config['spreadsheet']['sheet_name']}!A:T"
-        ).execute()
-        
+        result = load_family_addresses(self.gsheets_service, self.config)
         headers = result['values'][0]
         rows = result['values'][1:]
         col_idx = {name: idx for idx, name in enumerate(headers)}
@@ -78,6 +44,9 @@ To create one: https://console.cloud.google.com/apis/credentials?project=fit-dri
         #self.family_ids = self._get_family_ids(rows, col_idx)
         self.family_addresses = self._get_family_addresses(rows, col_idx)
         self.email_to_family = self._get_email_mapping(rows, col_idx)
+        
+        # Load gift preferences
+        self.gift_preferences = load_gift_preferences(self.gsheets_service, self.config)
     
     def _get_family_ids(self, rows: List[List[str]], col_idx: Dict[str, int]) -> List[str]:
         """Extract list of valid family IDs"""
@@ -155,7 +124,7 @@ To create one: https://console.cloud.google.com/apis/credentials?project=fit-dri
         else:
             print(f"\nCreated assignments for {len(self.assignments)} families")
 
-    def send_assignment_emails(self, is_reminder: bool = False) -> None:
+    def send_assignment_emails(self, is_reminder: bool = False, year: int = None) -> None:
         """Send emails to all families with their assignments"""
         for giver_id, receiver_id in self.assignments.items():
             subject = "Christmas Gift Exchange Assignment"
@@ -164,12 +133,12 @@ To create one: https://console.cloud.google.com/apis/credentials?project=fit-dri
             if self.test_mode:
                 subject = "[TEST] " + subject
             
-            message = self._compose_message(giver_id, receiver_id, is_reminder)
+            message = self._compose_message(giver_id, receiver_id, is_reminder, year)
             
             giver_emails = [email for email, fid in self.email_to_family.items() 
                            if fid == giver_id]
             
-            for email in giver_emails:
+            for email in tqdm(giver_emails):
                 if self.test_mode:
                     print(f"Would send email to: {email}")
                     print(f"Subject: {subject}")
@@ -186,16 +155,33 @@ To create one: https://console.cloud.google.com/apis/credentials?project=fit-dri
         """Create email message text"""
         prefix = "REMINDER: " if is_reminder else ""
         receiver_names = self.family_names.get(receiver_id, receiver_id)
-        return f"""
+        
+        # Get gift preferences for receiver if available
+        preferences_text = ""
+        if self.gift_preferences:  # Only include preferences section if we have data
+            if receiver_names in self.gift_preferences:
+                preferences_text = "\nTheir gift preferences:\n"
+                for pref in self.gift_preferences[receiver_names]:
+                    preferences_text += f"- {pref}\n"
+            else:
+                preferences_text = "\nThis family hasn't submitted their gift preferences yet.\n"
+        
+        message = f"""
 {prefix}Christmas Gift Exchange Assignment for {year}
 
 You are giving to the family of: {receiver_names}
 
 Their address is:
 {self.family_addresses[receiver_id]}
+{preferences_text}"""
 
-Happy Holidays!
-        """.strip()
+        # Only include the form link if we have gift preferences configured
+        if self.gift_preferences is not None:
+            message += "\nUPDATE: please fill out <a href=\"https://forms.gle/PqQcpF2tUJoExJmM7\">this form</a> with what your family would like to receive."
+
+        message += "\n\nHappy Holidays!"
+        
+        return message.strip()
 
 def main():
     parser = argparse.ArgumentParser(description='Family Gift Exchange Assignment System')

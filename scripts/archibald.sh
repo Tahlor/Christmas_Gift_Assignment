@@ -1,1 +1,1 @@
-python assigner.py --config ./configs/archibald.yaml --test
+python assigner.py --config ./configs/archibald.yaml --year 2024
