@@ -261,44 +261,26 @@
 <!-- OFFICIAL EXCHANGE MODE VIEW                                             -->
 <!-- ======================================================================= -->
 
-<!-- Address Review Warning Banner (Archibald Contact Sheet provenance) -->
-{% if pending_address_reviews %}
-<div class="card" style="border-left: 4px solid var(--color-warning); background-color: var(--color-gold-subtle); margin-bottom: 20px;">
-  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
-    <div style="flex: 1;">
-      <h3 style="color: #92400e; font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
-        <span>⚠️</span> Address Review Due Before Invitations
-      </h3>
-      <p style="font-size: 0.9rem; color: #78350f; margin-bottom: 8px;">
-        Contact information was synced from the official Archibald Contact Information Google Sheet (Family tab, Nov 12, 2026).
-        The following active household has an impending address update:
-      </p>
-      <div style="background: rgba(255, 255, 255, 0.6); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid #fde68a;">
-        {% for rev in pending_address_reviews %}
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: {{ '6px' if not loop.last else '0' }};">
-          <div>
-            <strong style="color: #78350f;">{{ rev.family_name }}</strong>
-            <span style="font-size: 0.85rem; color: #92400e; margin-left: 8px;">Review Due: {{ rev.review_due_date or 'Dec 12, 2026' }}</span>
-            {% if rev.admin_note %}
-            <div style="font-size: 0.82rem; color: #b45309; font-style: italic; margin-top: 2px;">
-              Admin Note: {{ rev.admin_note }}
-            </div>
-            {% endif %}
-          </div>
-          <form method="POST" action="{{ url_for('admin.mark_address_review', family_id=rev.family_id) }}" style="margin: 0;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 0.8rem; padding: 3px 10px;">
-              ✓ Mark Address Reviewed
-            </button>
-          </form>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
 
+{% if pending_address_reviews %}
+<details class="ui-review-flag">
+  <summary><strong>Address confirmation needed</strong> · {% for r in pending_address_reviews %}{{ r.family_name }}{% if not loop.last %}, {% endif %}{% endfor %}</summary>
+  <div class="ui-review-content">
+    {% for rev in pending_address_reviews %}
+    <div class="ui-review-entry">
+      <div>
+        <strong>{{ rev.family_name }}</strong> · Check by {{ rev.review_due_date }}
+        <p>{{ rev.admin_note }}</p>
+      </div>
+      <form method="POST" action="{{ url_for('admin.mark_address_review', family_id=rev.family_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-secondary btn-sm" type="submit" data-confirm="Mark address manually verified?">Confirm reviewed</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
 
 {% if spoilers_unlocked %}
 <div class="ui-alert ui-warning">
@@ -517,143 +499,58 @@
 </div>
 {% endif %}
 
-<!-- Compact Family Engagement Tracking Table -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <div>
-      <h2 class="card-title">📋 Family Engagement & Participation Tracking</h2>
-      <p class="card-subtitle">
-        Status for each household: address review, delivery status, link activity, assignment receipt confirmation, wish-list items, and guess ballots.
-      </p>
-    </div>
-  </div>
 
-  {% if tracking_data %}
-  <div class="table-responsive">
-    <table class="table" style="font-size: 0.88rem;">
-      <thead>
-        <tr>
-          <th>Family</th>
-          <th>Address Review</th>
-          <th>Invitation</th>
-          <th>Link Opened</th>
-          <th>Received Confirmed</th>
-          <th>Wishlist</th>
-          <th>Guess Ballot</th>
-          <th>Private Invitation Link</th>
-          <th>Recipient (Pairing)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in tracking_data %}
-        <tr>
-          <td style="font-weight: 600; white-space: nowrap;">
-            {{ row.family_name }}
-            {% if row.emails %}
-            <div style="font-size: 0.78rem; color: var(--color-text-muted); font-weight: normal;">{{ row.emails }}</div>
-            {% endif %}
-          </td>
-          <td style="white-space: nowrap;">
-            {% if row.address_review_status == 'pending' %}
-            <span class="badge" style="background: #fef3c7; color: #92400e;">⚠️ Review Due</span>
-            {% elif row.address_review_status == 'reviewed' %}
-            <span class="badge badge-published">✓ Verified</span>
-            {% else %}
-            <span class="badge badge-inactive">Current</span>
-            {% endif %}
-          </td>
-          <td style="white-space: nowrap;">
-            {% if row.invitation_status == 'smtp_accepted' %}
-            <span class="badge badge-published" title="Accepted by the mail server, not guaranteed delivered">{{ row.invitation_label }}</span>
-            {% elif row.invitation_status in ('failed', 'partial') %}
-            <span class="badge" style="background: var(--color-accent-subtle); color: var(--color-accent);">{{ row.invitation_label }}</span>
-            {% else %}
-            <span class="badge badge-inactive">Not sent</span>
-            {% endif %}
-            {% if row.email_details %}
-            <details style="margin-top: 4px;">
-              <summary style="cursor: pointer; font-size: 0.75rem;">Email details</summary>
-              {% for e in row.email_details %}
-              <div style="margin-top: 4px; font-size: 0.75rem;">
-                <strong>{{ e.recipient_email }}</strong> - {{ e.status }}
-                {% if e.attempted_at %}<span title="{{ e.attempted_at }}">({{ e.attempted_at[:16] }})</span>{% endif %}
-              </div>
-              {% endfor %}
-            </details>
-            {% endif %}
-          </td>
-          <td style="white-space: nowrap; color: var(--color-text-muted);">
-            {% if row.last_visit %}
-            <span title="Last portal GET request (may include email preview scanners)">{{ row.last_visit[:16] }}</span>
-            {% else %}
-            <span style="color: var(--color-text-subtle);">Never</span>
-            {% endif %}
-          </td>
-          <td style="white-space: nowrap;">
-            {% if row.assignment_confirmed_at %}
-            <span class="badge badge-published" title="{{ row.assignment_confirmed_at }}">✓ Confirmed</span>
-            {% else %}
-            <span class="badge badge-inactive">Pending</span>
-            {% endif %}
-          </td>
-          <td style="white-space: nowrap;">
-            {% if row.wishlist_items_count > 0 %}
-            <span class="badge badge-draft" title="Updated {{ row.wishlist_updated_at or '' }}">
-              {{ row.wishlist_items_count }} item{{ 's' if row.wishlist_items_count != 1 else '' }}
-            </span>
-            {% else %}
-            <span style="color: var(--color-text-subtle);">Empty</span>
-            {% endif %}
-          </td>
-          <td style="white-space: nowrap;">
-            {% if row.guess_submitted_at %}
-            <span class="badge badge-published" title="Submitted {{ row.guess_submitted_at }}">✓ Submitted</span>
-            {% else %}
-            <span class="badge badge-inactive">Pending</span>
-            {% endif %}
-          </td>
-          <td style="white-space: nowrap;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <input
-                type="text"
-                readonly
-                class="form-control form-control-sm"
-                style="font-size: 0.78rem; padding: 2px 6px; width: 140px;"
-                id="link-{{ row.family_id }}"
-                value="{{ row.portal_url }}"
-              >
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm copy-btn"
-                data-copy-target="#link-{{ row.family_id }}"
-                style="padding: 2px 6px; font-size: 0.78rem;"
-                title="Copy private link"
-              >Copy</button>
-              <a href="{{ row.mailto_url }}" class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 0.78rem;" title="Email via Mailto">✉️</a>
-            </div>
-          </td>
-          <td style="white-space: nowrap; font-weight: 600;">
-            {% if spoilers_unlocked %}
-              <span style="color: var(--color-primary);">{{ row.recipient_name or '—' }}</span>
-            {% else %}
-              <span class="spoiler-masked" title="Unlock spoilers to view">🔒 Hidden</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<section class="ui-progress card" aria-labelledby="family-progress-heading">
+  <div class="ui-section-heading">
+    <div>
+      <h2 id="family-progress-heading">Family activity</h2>
+      <p>Invites, wishes, confirmations and guesses</p>
+    </div>
+    <span class="ui-count">{{ tracking_data|length }} families</span>
   </div>
-  {% else %}
-  <div class="empty-state">
-    <div class="empty-state-icon">🎁</div>
-    <h3 style="color: var(--color-primary); margin-bottom: 6px;">No Assignments Prepared for {{ current_year }}</h3>
-    <p style="color: var(--color-text-muted); max-width: 480px; margin: 0 auto 16px;">
-      Use the preparation tool above to generate official sealed assignments for Christmas {{ current_year }}.
-    </p>
+  <div class="ui-family-list">
+    {% for row in tracking_data %}
+    <details class="ui-family-row">
+      <summary>
+        <span class="ui-family-primary">
+          <strong>{{ row.family_name }}</strong>
+          {% if row.address_review_status == 'pending' %}<small class="ui-needs-review">Address check due</small>{% endif %}
+        </span>
+        <span class="ui-family-statuses">
+          <span class="{{ 'ui-status-ok' if row.invitation_status == 'smtp_accepted' else ('ui-status-bad' if row.invitation_status in ('failed','partial') else '') }}">{{ row.invitation_label }}</span>
+          <span>{{ row.wishlist_items_count }} wishes</span>
+          {% if is_published %}<span>{{ 'Received' if row.assignment_confirmed_at else 'Not confirmed' }}</span>{% endif %}
+          {% if is_published %}<span>{{ 'Guessed' if row.guess_submitted_at else 'No guesses' }}</span>{% endif %}
+        </span>
+      </summary>
+      <div class="ui-family-expanded">
+        <div><span class="ui-detail-name">Email addresses</span><span>{{ row.emails or 'None recorded' }}</span></div>
+        <div><span class="ui-detail-name">Invitation</span><span>{{ row.invitation_label }}</span></div>
+        {% if row.email_details %}
+        <div class="ui-email-history">
+          <span class="ui-detail-name">Attempts by address</span>
+          {% for e in row.email_details %}<div>{{ e.recipient_email }} · {{ e.status }}{% if e.attempted_at %} · {{ e.attempted_at[:16] }}{% endif %}</div>{% endfor %}
+        </div>
+        {% endif %}
+        <div><span class="ui-detail-name">Link Opened</span><span>{{ row.last_visit[:16] if row.last_visit else 'Never' }} <small>(could be an email scanner)</small></span></div>
+        <div><span class="ui-detail-name">Family confirmed receipt</span><span>{{ row.assignment_confirmed_at[:16] if row.assignment_confirmed_at else 'Pending' }}</span></div>
+        <div><span class="ui-detail-name">Wish list</span><span>{{ row.wishlist_items_count }} items{% if row.wishlist_updated_at %} · updated {{ row.wishlist_updated_at[:16] }}{% endif %}</span></div>
+        <div><span class="ui-detail-name">Guess ballot</span><span>{{ row.guess_submitted_at[:16] if row.guess_submitted_at else 'Not submitted' }}</span></div>
+        <div class="ui-family-links">
+          <label for="link-{{ row.family_id }}" class="ui-detail-name">Private family link</label>
+          <input type="text" id="link-{{ row.family_id }}" class="form-control" value="{{ row.portal_url }}" readonly aria-label="Private link for {{ row.family_name }}">
+          <button type="button" class="btn btn-secondary btn-sm" data-copy-target="#link-{{ row.family_id }}">Copy link</button>
+          <a class="btn btn-secondary btn-sm" href="{{ row.mailto_url }}">Compose email</a>
+        </div>
+        {% if spoilers_unlocked and row.recipient_name %}
+        <div><span class="ui-detail-name">Official recipient</span><strong>{{ row.recipient_name }}</strong></div>
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
   </div>
-  {% endif %}
-</div>
+  <p class="ui-small-note">SMTP accepted is not proof of delivery. Explicit family confirmation is more reliable.</p>
+</section>
 
 <!-- Guess-The-Giver Reveal Section (Post-Exchange) -->
 {% if is_published %}
