@@ -1040,6 +1040,22 @@ def test_lab():
     family_map = {f["id"]: f["name"] for f in sim_roster}
     family_ids = [f["id"] for f in sim_roster]
 
+    # Test the custom fixed order exactly as entered. Never save it to official settings.
+    fixed_ids = None
+    fixed_steps = None
+    fixed_error = None
+    if mode == "fixed_rotation":
+        raw_ids = request.form.get("fixed_household_order", "").strip()
+        raw_steps = request.form.get("fixed_offset_order", "").strip()
+        try:
+            fixed_ids = [int(x.strip()) for x in raw_ids.split(",") if x.strip()] if raw_ids else sorted(family_ids)
+            fixed_steps = [int(x.strip()) for x in raw_steps.split(",") if x.strip()] if raw_steps else list(range(1, len(family_ids)))
+            valid, problems = validate_fixed_rotation_config(fixed_ids, fixed_steps, family_ids)
+            if not valid:
+                fixed_error = " ".join(problems)
+        except ValueError:
+            fixed_error = "Enter comma-separated numbers for family IDs and yearly steps."
+
     single_result = None
     batch_result = None
     cycle_info = get_cycle_info(len(family_ids), year, anchor_year)
@@ -1048,6 +1064,8 @@ def test_lab():
         len(family_ids), lookback, coverage_k, enforce_coverage)
     if not feasibility["is_feasible"]:
         error_message = " ".join(feasibility["errors"])
+    if fixed_error:
+        error_message = fixed_error
     if enforce_coverage and mode in ("uniform_random", "randomized_cycle"):
         error_message = (
             "This method does not guarantee coverage in every sliding window. "
@@ -1065,7 +1083,9 @@ def test_lab():
                 anchor_year=anchor_year,
                 seed=test_seed,
                 lookback_years=lookback,
-                num_runs=100
+                num_runs=100,
+                fixed_household_order=fixed_ids,
+                fixed_offset_order=fixed_steps
             )
         else:
             history_disallowed = None
@@ -1078,7 +1098,9 @@ def test_lab():
                 year=year,
                 anchor_year=anchor_year,
                 seed=test_seed,
-                history_disallowed=history_disallowed
+                history_disallowed=history_disallowed,
+                fixed_household_order=fixed_ids,
+                fixed_offset_order=fixed_steps
             )
 
             conflicts = []
