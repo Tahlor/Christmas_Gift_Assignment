@@ -1405,3 +1405,64 @@ def test_v3_per_email_smtp_statuses_and_dashboard_tracking(app, client):
     assert b"SMTP accepted 1/2" in page.data
     assert b"first@example.test" in page.data and b"second@example.test" in page.data
     assert b"Link Opened" in page.data
+
+
+def test_mobile_v4_selectable_method_explanations_and_compact_layout(client):
+    """The organizer includes contextual method help and mobile-specific affordances."""
+    login_admin(client)
+    for mode in ("test", "official"):
+        page = client.get(f"/christmas/admin/dashboard?mode={mode}")
+        assert page.status_code == 200
+        assert b'data-method-selector' in page.data
+        assert b'data-method-explainer' in page.data
+        assert b'data-fixed-config' in page.data
+        assert b"Avoid repeat recipients" in page.data
+        assert b"Give to everyone" in page.data
+    javascript = client.get("/christmas/static/js/app.js")
+    assert javascript.status_code == 200
+    for label in (b"shuffled_rotation", b"fixed_rotation",
+                  b"uniform_random", b"randomized_cycle", b"Example:"):
+        assert label in javascript.data
+    css = client.get("/christmas/static/css/style.css")
+    assert b"@media (max-width: 700px)" in css.data
+    assert b".ui-family-row" in css.data
+
+
+def test_mobile_v4_custom_fixed_test_matches_selected_rotation_without_side_effects(app, client):
+    """Fixed rotation in Test mode must not ignore the custom steps."""
+    with app.app_context():
+        ids = [create_family(f"Sample {letter}", f"{letter}@example.test")
+               for letter in ("A", "B", "C", "D", "E")]
+        before_seed = get_production_seed()
+    login_admin(client)
+    csrf = get_csrf(client)
+    form = {
+        "csrf_token": csrf,
+        "assignment_mode": "fixed_rotation",
+        "fixed_household_order": ",".join(map(str, ids)),
+        "fixed_offset_order": "3,1,4,2",
+        "year": "2026",
+        "anchor_year": "2026",
+        "test_seed": "only-for-test",
+        "roster_choice": "current",
+        "no_repeat_years": "3",
+        "coverage_window_k": "4",
+        "enforce_sliding_coverage": "1",
+        "sim_type": "single",
+    }
+    response = client.post("/christmas/admin/test-lab", data=form, follow_redirects=True)
+    assert response.status_code == 200
+    assert b"TEST" in response.data
+    assert b"Sample A" in response.data and b"Sample D" in response.data
+    with client.session_transaction() as ses:
+        # Test results are simulated and never stored as a real draw.
+        assert ses["admin_mode"] == "test"
+    with app.app_context():
+        assert not get_assignments_for_year(2026)
+        assert get_production_seed() == before_seed
+
+    form["fixed_offset_order"] = "1,1,1,1"
+    rejected = client.post("/christmas/admin/test-lab", data=form, follow_redirects=True)
+    assert rejected.status_code == 200
+    assert b"Test" in rejected.data
+    assert b"error" in rejected.data.lower()
