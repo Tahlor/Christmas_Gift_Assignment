@@ -1363,18 +1363,20 @@ def get_admin_tracking_data(year: int, spoilers_unlocked: bool = False) -> List[
     # Get latest email status per family
     email_logs = db.execute(
         """
-        SELECT family_id, status, error_message, sent_at
+        SELECT family_id, recipient_email, status, error_message, sent_at
         FROM email_logs
         WHERE year = ?
-        ORDER BY sent_at DESC
+        ORDER BY id DESC
         """,
         (year,)
     ).fetchall()
+    # Track each email address independently, not simply the last row per household.
     latest_email = {}
     for log in email_logs:
-        fid = log["family_id"]
-        if fid not in latest_email:
-            latest_email[fid] = log
+        family_rows = latest_email.setdefault(log["family_id"], {})
+        address = log["recipient_email"].strip().lower() or "(missing address)"
+        if address not in family_rows:
+            family_rows[address] = log
 
     # Get wishlist items count and last update per family
     wishlist_counts = {}
@@ -1418,17 +1420,31 @@ def get_admin_tracking_data(year: int, spoilers_unlocked: bool = False) -> List[
                 "label": f"⚠️ Review Due ({rev['review_due_date']})" if is_pending else "✓ Reviewed"
             }
 
-        # Invitation status
-        email_info = latest_email.get(fid)
-        if not email_info:
+        # Per-address SMTP status. SMTP accepted != actual delivery.
+        attempts = list(latest_email.get(fid, {}).values())
+        accepted = sum(e["status"] in ("success", "sent") for e in attempts)
+        failures = sum(e["status"] == "failed" for e in attempts)
+        if not attempts:
             inv_status = "not_sent"
             inv_label = "Not sent"
-        elif email_info["status"] in ("success", "sent"):
+        elif failures == 0 and accepted == len(attempts):
             inv_status = "smtp_accepted"
-            inv_label = "SMTP accepted (not delivered)"
+            inv_label = f"SMTP accepted {accepted}/{len(attempts)}"
+        elif accepted > 0:
+            inv_status = "partial"
+            inv_label = f"SMTP accepted {accepted}/{len(attempts)}; {failures} failed"
         else:
             inv_status = "failed"
-            inv_label = f"Failed: {email_info['error_message'] or 'Error'}"
+            inv_label = f"Failed {failures}/{len(attempts)}"
+        email_details = [
+            {
+                "recipient_email": item["recipient_email"],
+                "status": "SMTP accepted" if item["status"] in ("success", "sent") else "Failed",
+                "attempted_at": item["sent_at"],
+                "error_message": item["error_message"] or "",
+            }
+            for item in attempts
+        ]
 
         # Wishlist info
         w_cnt, w_updated = wishlist_counts.get(fid, (0, None))
@@ -1456,6 +1472,7 @@ def get_admin_tracking_data(year: int, spoilers_unlocked: bool = False) -> List[
             "address_review_status": addr_status["status"],
             "invitation_status": inv_status,
             "invitation_label": inv_label,
+            "email_details": email_details,
             "last_visit": act["last_visit"] if act else None,
             "assignment_confirmed_at": act["assignment_confirmed_at"] if act else None,
             "is_confirmed": bool(act and act["assignment_confirmed_at"]),

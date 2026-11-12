@@ -1374,3 +1374,34 @@ def test_manual_confirmed_history_does_not_lock_seed(app):
         save_manual_history_for_year(2024, [(x, y), (y, x)], confidence="confirmed")
         set_production_seed("can-still-select-production-seed")
         assert get_recent_history_disallowed([x, y], 2026, 2000)[x] == {y}
+
+
+def test_v3_per_email_smtp_statuses_and_dashboard_tracking(app, client):
+    """Do not report a household fully sent if one of its addresses failed."""
+    from web.db import get_db
+    from web.models import get_admin_tracking_data
+    from datetime import datetime, timezone
+    with app.app_context():
+        fam = create_family("Two Mailboxes", "first@example.test, second@example.test")
+        create_family("Other Household", "third@example.test")
+        db = get_db()
+        now = datetime.now(timezone.utc).isoformat()
+        with db:
+            db.execute(
+                "INSERT INTO email_logs (year,family_id,recipient_email,status,error_message,sent_at) VALUES (?,?,?,?,?,?)",
+                (2026, fam, "first@example.test", "sent", "", now),
+            )
+            db.execute(
+                "INSERT INTO email_logs (year,family_id,recipient_email,status,error_message,sent_at) VALUES (?,?,?,?,?,?)",
+                (2026, fam, "second@example.test", "failed", "SMTP refused", now),
+            )
+        row = next(x for x in get_admin_tracking_data(2026) if x["family_id"] == fam)
+        assert row["invitation_status"] == "partial"
+        assert len(row["email_details"]) == 2
+        assert "1/2" in row["invitation_label"]
+    login_admin(client)
+    page = client.get("/christmas/admin/dashboard")
+    assert page.status_code == 200
+    assert b"SMTP accepted 1/2" in page.data
+    assert b"first@example.test" in page.data and b"second@example.test" in page.data
+    assert b"Link Opened" in page.data

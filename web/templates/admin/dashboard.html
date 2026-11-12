@@ -769,12 +769,23 @@
             {% endif %}
           </td>
           <td style="white-space: nowrap;">
-            {% if row.invitation_status == 'sent' %}
-            <span class="badge badge-published" title="SMTP Accepted (not guaranteed delivered)">SMTP Accepted</span>
-            {% elif row.invitation_status == 'failed' %}
-            <span class="badge" style="background: var(--color-accent-subtle); color: var(--color-accent);">Failed</span>
+            {% if row.invitation_status == 'smtp_accepted' %}
+            <span class="badge badge-published" title="Accepted by the mail server, not guaranteed delivered">{{ row.invitation_label }}</span>
+            {% elif row.invitation_status in ('failed', 'partial') %}
+            <span class="badge" style="background: var(--color-accent-subtle); color: var(--color-accent);">{{ row.invitation_label }}</span>
             {% else %}
-            <span class="badge badge-inactive">Not Sent</span>
+            <span class="badge badge-inactive">Not sent</span>
+            {% endif %}
+            {% if row.email_details %}
+            <details style="margin-top: 4px;">
+              <summary style="cursor: pointer; font-size: 0.75rem;">Email details</summary>
+              {% for e in row.email_details %}
+              <div style="margin-top: 4px; font-size: 0.75rem;">
+                <strong>{{ e.recipient_email }}</strong> - {{ e.status }}
+                {% if e.attempted_at %}<span title="{{ e.attempted_at }}">({{ e.attempted_at[:16] }})</span>{% endif %}
+              </div>
+              {% endfor %}
+            </details>
             {% endif %}
           </td>
           <td style="white-space: nowrap; color: var(--color-text-muted);">
@@ -857,7 +868,7 @@
     <div>
       <h2 class="card-title">🎉 Family Guess-the-Giver Game & Reveal</h2>
       <p class="card-subtitle">
-        Participation: {{ guess_submission_status.submitted_count }} of {{ guess_submission_status.active_count }} families have submitted ballots.
+        Participation: {{ guess_submission_status.submitted_count }} of {{ guess_submission_status.total_active }} families have submitted ballots.
       </p>
     </div>
     <div>
