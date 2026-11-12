@@ -983,3 +983,5 @@ details.settings-drawer summary:hover {
   }
   .ui-action-row { position: sticky; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 8; background: #fff; border-radius: 9px; padding: 5px 0; }
 }
+
+.ui-method-conflict { margin: 8px 0 0 !important; padding-top: 7px; border-top: 1px solid #ead6af; font-weight: 650; font-size: .81rem; color: #8f5d17; }
