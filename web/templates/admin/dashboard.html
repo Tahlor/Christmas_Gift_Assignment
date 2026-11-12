@@ -292,7 +292,7 @@
 </div>
 {% else %}
 <details class="ui-config-drawer ui-privacy-drawer">
-  <summary>🔒 Spoiler Protection is ACTIVE — official pairings are hidden</summary>
+  <summary>🔒 Spoiler Protection is ACTIVE — official pairings are Hidden</summary>
   <p class="ui-small-note">You can manage the exchange without seeing who gives to whom.</p>
   <form method="POST" action="{{ url_for('admin.unlock_spoilers') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
