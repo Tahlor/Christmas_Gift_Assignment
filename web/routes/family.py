@@ -14,6 +14,7 @@ from flask import (
 from web.models import (
     calculate_game_scores,
     get_all_families,
+    get_family_activity,
     get_family_ballot,
     get_family_by_token,
     get_family_recipient_for_year,
@@ -22,6 +23,9 @@ from web.models import (
     get_wishlist_as_text,
     is_guesses_revealed,
     is_year_published,
+    record_family_assignment_confirmation,
+    record_family_visit,
+    record_family_wishlist_update,
     set_family_wishlist_from_text,
     submit_guess_ballot,
     update_family_contact_and_notes,
@@ -45,6 +49,11 @@ def portal(token: str):
 
     current_year = int(get_setting("current_year", str(datetime.now().year)))
     published = is_year_published(current_year)
+
+    # Record link visit in family_activity (minimal timestamp, no secret logged)
+    record_family_visit(family["id"], current_year)
+    activity = get_family_activity(family["id"], current_year)
+    is_confirmed = bool(activity and activity["assignment_confirmed_at"])
 
     recipient = None
     recipient_wishlist = []
@@ -90,8 +99,28 @@ def portal(token: str):
         existing_guesses=existing_guesses,
         guesses_revealed=guesses_revealed,
         game_results=game_results,
-        show_game=show_game
+        show_game=show_game,
+        is_confirmed=is_confirmed,
+        assignment_confirmed_at=activity["assignment_confirmed_at"] if activity else None
     )
+
+
+@family_bp.route("/f/<token>/confirm-receipt", methods=["POST"])
+@family_bp.route("/family/<token>/confirm-receipt", methods=["POST"])
+def confirm_receipt(token: str):
+    """Explicitly confirm receipt of assignment after release."""
+    family = get_family_by_token(token)
+    if not family:
+        abort(404)
+
+    current_year = int(get_setting("current_year", str(datetime.now().year)))
+    if not is_year_published(current_year):
+        flash("Assignments have not been released yet.", "error")
+        return redirect(url_for("family.portal", token=token))
+
+    record_family_assignment_confirmation(family["id"], current_year)
+    flash("Thank you! We've recorded that you received your gift assignment.", "success")
+    return redirect(url_for("family.portal", token=token))
 
 
 @family_bp.route("/f/<token>/wishlist", methods=["POST"])
@@ -102,8 +131,10 @@ def update_wishlist(token: str):
     if not family:
         abort(404)
 
+    current_year = int(get_setting("current_year", str(datetime.now().year)))
     wishlist_text = request.form.get("wishlist_text", "")
     set_family_wishlist_from_text(family["id"], wishlist_text)
+    record_family_wishlist_update(family["id"], current_year)
     flash("Your family's wish list has been saved!", "success")
     return redirect(url_for("family.portal", token=token))
 

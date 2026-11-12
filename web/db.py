@@ -144,11 +144,45 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     success INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS family_address_reviews (
+    family_id INTEGER PRIMARY KEY REFERENCES families(id) ON DELETE CASCADE,
+    review_due_date TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    admin_note TEXT DEFAULT '',
+    source_sheet_updated_at TEXT,
+    created_at TEXT NOT NULL,
+    reviewed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS family_activity (
+    family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    year INTEGER NOT NULL,
+    last_visit TEXT,
+    assignment_confirmed_at TEXT,
+    wishlist_updated_at TEXT,
+    guess_submitted_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (family_id, year)
+);
+
+CREATE TABLE IF NOT EXISTS archive_metadata (
+    year INTEGER PRIMARY KEY,
+    assignment_mode TEXT NOT NULL,
+    no_repeat_years INTEGER NOT NULL,
+    coverage_window INTEGER NOT NULL,
+    seed_fingerprint TEXT NOT NULL,
+    roster_signature TEXT NOT NULL,
+    config_json TEXT DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_assignments_year ON assignments(year);
 CREATE INDEX IF NOT EXISTS idx_families_token ON families(access_token);
 CREATE INDEX IF NOT EXISTS idx_wishlist_family ON wishlist_items(family_id);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip_address, attempt_time);
 CREATE INDEX IF NOT EXISTS idx_guess_ballots_year ON guess_ballots(year, voting_family_id);
+CREATE INDEX IF NOT EXISTS idx_family_activity_year ON family_activity(year);
 """
 
 
@@ -161,6 +195,48 @@ def run_migrations(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE assignments ADD COLUMN provenance TEXT NOT NULL DEFAULT 'official';")
     if "confidence" not in cols:
         conn.execute("ALTER TABLE assignments ADD COLUMN confidence TEXT NOT NULL DEFAULT 'confirmed';")
+
+    # Create V3 tables if not exist
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS family_address_reviews (
+        family_id INTEGER PRIMARY KEY REFERENCES families(id) ON DELETE CASCADE,
+        review_due_date TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        admin_note TEXT DEFAULT '',
+        source_sheet_updated_at TEXT,
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT
+    );
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS family_activity (
+        family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+        year INTEGER NOT NULL,
+        last_visit TEXT,
+        assignment_confirmed_at TEXT,
+        wishlist_updated_at TEXT,
+        guess_submitted_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (family_id, year)
+    );
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS archive_metadata (
+        year INTEGER PRIMARY KEY,
+        assignment_mode TEXT NOT NULL,
+        no_repeat_years INTEGER NOT NULL,
+        coverage_window INTEGER NOT NULL,
+        seed_fingerprint TEXT NOT NULL,
+        roster_signature TEXT NOT NULL,
+        config_json TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL
+    );
+    """)
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_family_activity_year ON family_activity(year);")
 
 
 def init_db(db_path: str):
@@ -175,9 +251,14 @@ def init_db(db_path: str):
         defaults = {
             "current_year": current_year,
             "cycle_anchor_year": current_year,
-            "assignment_mode": "randomized_cycle",
+            "assignment_mode": "shuffled_rotation",
             "cycle_secret": secrets.token_hex(32),
             "no_repeat_years": "1",
+            "enforce_sliding_coverage": "1",
+            "coverage_window_k": "4",
+            "rotation_salt": "",
+            "fixed_household_order": "",
+            "fixed_offset_order": "",
             "roster_anchor_hash": "",
         }
 

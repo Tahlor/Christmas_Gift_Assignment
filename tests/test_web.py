@@ -1258,11 +1258,20 @@ class TestFamilyGuessingGame:
         resp_dash = client.get("/christmas/admin/dashboard")
         assert b"1 of 3 families have submitted ballots" in resp_dash.data
 
-        # Organizer reveals answers
+        # Organizer tries to reveal without override - blocked because families B & C pending
         admin_csrf = get_csrf(client)
-        resp_reveal = client.post(
+        resp_blocked = client.post(
             "/christmas/admin/game/reveal",
             data={"csrf_token": admin_csrf},
+            follow_redirects=True
+        )
+        assert resp_blocked.status_code == 200
+        assert b"Cannot reveal answers" in resp_blocked.data
+
+        # Organizer reveals answers with explicit emergency override
+        resp_reveal = client.post(
+            "/christmas/admin/game/reveal",
+            data={"csrf_token": admin_csrf, "override_pending": "1"},
             follow_redirects=True
         )
         assert resp_reveal.status_code == 200

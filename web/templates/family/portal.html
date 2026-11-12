@@ -18,6 +18,28 @@
   <div style="font-size: 1.1rem; color: var(--color-text-muted); margin-top: 6px;">You are giving a gift to:</div>
   <div class="recipient-name">{{ recipient.receiver_name }}</div>
 
+  <!-- Receipt Confirmation Box -->
+  <div style="margin-top: 16px; padding: 12px 16px; background: #faf9f5; border-radius: var(--radius-md); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+    <div>
+      <span style="font-weight: 700; color: var(--color-primary); font-size: 0.95rem;">Confirmation:</span>
+      {% if is_confirmed %}
+      <span class="badge badge-published" style="margin-left: 8px;">✓ Assignment Received</span>
+      <span style="font-size: 0.85rem; color: var(--color-text-muted); margin-left: 6px;">
+        {% if assignment_confirmed_at %}(Confirmed {{ assignment_confirmed_at[:10] }}){% else %}(Confirmed){% endif %}
+      </span>
+      {% else %}
+      <span class="badge badge-draft" style="margin-left: 8px;">Pending Confirmation</span>
+      <span style="font-size: 0.85rem; color: var(--color-text-muted); margin-left: 6px;">Please let the organizer know you saw your assignment.</span>
+      {% endif %}
+    </div>
+    {% if not is_confirmed %}
+    <form method="POST" action="{{ url_for('family.confirm_receipt', token=token) }}" style="margin: 0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-primary btn-sm">✓ I Received My Assignment</button>
+    </form>
+    {% endif %}
+  </div>
+
   <div class="form-row" style="margin-top: 20px;">
     <!-- Recipient Mailing Address -->
     <div style="background: #faf9f5; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px;">

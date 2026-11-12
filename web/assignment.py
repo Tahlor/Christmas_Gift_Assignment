@@ -1,15 +1,17 @@
 """Assignment algorithm module with mathematical coverage guarantees.
 
 Pure functions implementing:
-1. Predictable rotation over n-1 offsets (deterministic cyclic derangements).
-2. Randomized full-coverage cycle (pseudorandom cycle-keyed derangements).
-3. Uniform random derangement with recent history repeat avoidance (rejection sampling).
-4. Cycle analysis, fairness metrics, and roster change detection.
+1. Shuffled repeating rotation over n-1 offsets (deterministic periodic rolling coverage).
+2. Fixed rotation (organizer customized household and offset permutation).
+3. Predictable rotation over n-1 offsets (deterministic cyclic derangements).
+4. Randomized full-coverage cycle (legacy pseudorandom cycle-keyed derangements).
+5. Uniform random derangement with recent history repeat avoidance (rejection sampling).
+6. Cycle analysis, fairness metrics, candidate salt search, and mathematical rule feasibility.
 """
 
 import hashlib
 import random
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 class AssignmentError(Exception):
@@ -27,6 +29,229 @@ def compute_roster_hash(family_ids: List[int]) -> str:
     sorted_ids = sorted(family_ids)
     data = ",".join(str(i) for i in sorted_ids)
     return hashlib.sha256(data.encode("utf-8")).hexdigest()[:16]
+
+
+def validate_rules_feasibility(
+    n: int,
+    lookback_l: int,
+    coverage_k: int,
+    enforce_coverage: bool = True
+) -> Dict[str, Any]:
+    """Validate mathematical feasibility of rules A and B.
+
+    Rule A: Lookback L (nonnegative integer) - no repeat within prior L years.
+    Rule B: Rolling coverage K (integer >= 1) - every family gives to every other family
+            within any K consecutive Christmases.
+
+    Mathematical guarantees & limits:
+    - Minimum feasible K is n - 1. A family gives to 1 recipient per year, so covering
+      all n - 1 other families requires at least n - 1 consecutive years.
+    - If rolling coverage is enforced with period n - 1, a recipient repeats every n - 1 years.
+      Therefore, lookback L CANNOT exceed n - 2.
+    - If L > n - 2 while enforcing perpetual coverage, the rules are mathematically incompatible
+      (e.g., n=5 active families -> max L=3, min K=4).
+    """
+    errors: List[str] = []
+    min_k = max(1, n - 1) if n >= 2 else 1
+    max_l = max(0, n - 2) if n >= 2 else 0
+
+    if n < 2:
+        return {
+            "is_feasible": True,
+            "errors": [],
+            "message": "Fewer than 2 active families registered. Register at least 2 families to prepare assignments.",
+            "min_k": 1,
+            "max_l": 0,
+            "suggested_k": 1,
+            "suggested_l": 0,
+            "suggested_lookback": 0,
+            "suggested_coverage_window": 1,
+            "cycle_length": 1,
+            "explanation": "At least 2 active families are needed to run an exchange.",
+            "n_active": n,
+        }
+
+    if lookback_l < 0:
+        errors.append("Lookback years (L) cannot be negative.")
+
+    if enforce_coverage:
+        if coverage_k < n - 1:
+            errors.append(
+                f"With {n} active families, complete rolling coverage requires a window of at least "
+                f"K = {n - 1} consecutive Christmases (each family can give to at most 1 distinct recipient per year). "
+                f"K = {coverage_k} is mathematically impossible."
+            )
+        if lookback_l > n - 2:
+            errors.append(
+                f"Mathematically incompatible: You cannot enforce both perpetual rolling coverage (period {n - 1}) "
+                f"and a no-repeat lookback of L = {lookback_l} years. "
+                f"With {n} active families, each family gives to all {n - 1} other families within {n - 1} years, "
+                f"so each recipient is revisited every {n - 1} years. "
+                f"Therefore, the maximum possible lookback is L = {n - 2} (for {n} families: L max {n - 2}, K min {n - 1})."
+            )
+    else:
+        if lookback_l >= n - 1:
+            errors.append(
+                f"With {n} active families, each family only has {n - 1} potential recipients. "
+                f"A lookback of L = {lookback_l} forbids all {n - 1} recipients once covered, making future derangements infeasible."
+            )
+
+    is_feasible = (len(errors) == 0)
+    suggested_k = max(coverage_k, n - 1)
+    suggested_l = min(max(0, lookback_l), n - 2)
+
+    return {
+        "is_feasible": is_feasible,
+        "errors": errors,
+        "message": " ".join(errors) if errors else "Rules are mathematically feasible.",
+        "min_k": min_k,
+        "max_l": max_l,
+        "suggested_k": suggested_k,
+        "suggested_l": suggested_l,
+        "suggested_lookback": suggested_l,
+        "suggested_coverage_window": suggested_k,
+        "cycle_length": max(1, n - 1),
+        "explanation": f"Period {max(1, n - 1)} schedule satisfies every sliding window of K ≥ {max(1, n - 1)} with lookback L ≤ {max(0, n - 2)}.",
+        "n_active": n,
+    }
+
+
+def generate_shuffled_rotation_schedule(
+    family_ids: List[int],
+    seed: str,
+    salt: str = "0"
+) -> Tuple[List[int], List[int]]:
+    """Generate stable shuffled household order and offset permutation.
+
+    Guarantees:
+    - Stable shuffled household order and nonzero offset permutation generated
+      deterministically from (seed, salt, sorted family_ids).
+    - REUSED across all cycles; does NOT independently re-shuffle cycle boundaries,
+      preventing repeats across boundaries and guaranteeing periodic sliding window coverage.
+    """
+    sorted_families = sorted(family_ids)
+    n = len(sorted_families)
+    if n < 2:
+        raise AssignmentError("At least 2 active families are required for a gift exchange.")
+
+    seed_key = f"shuffled_rotation:{seed}:{salt}:{sorted_families}"
+    seed_hash = hashlib.sha256(seed_key.encode("utf-8")).digest()
+    rng = random.Random(int.from_bytes(seed_hash[:8], byteorder="big"))
+
+    household_order = list(sorted_families)
+    rng.shuffle(household_order)
+
+    offsets = list(range(1, n))
+    rng.shuffle(offsets)
+
+    return household_order, offsets
+
+
+def shuffled_repeating_rotation(
+    family_ids: List[int],
+    year: int,
+    anchor_year: int,
+    seed: str,
+    salt: str = "0"
+) -> Dict[int, int]:
+    """Calculate assignments using Shuffled Repeating Rotation (Recommended).
+
+    Pure deterministic function fulfilling:
+    - 1-to-1 derangement (no self-assignments, each family gives once and receives once).
+    - Full rolling coverage over ANY sliding window of K >= n-1 consecutive years.
+    - Zero repeats across any lookback L <= n-2 years across all cycles (including boundary years).
+    """
+    household_order, offsets = generate_shuffled_rotation_schedule(family_ids, seed, salt)
+    n = len(household_order)
+    cycle_length = n - 1
+    step = (year - anchor_year) % cycle_length
+    shift = offsets[step]
+
+    assignments = {}
+    for i, giver in enumerate(household_order):
+        receiver = household_order[(i + shift) % n]
+        assignments[giver] = receiver
+
+    return assignments
+
+
+def find_deterministic_rotation_salt(
+    family_ids: List[int],
+    year: int,
+    anchor_year: int,
+    seed: str,
+    disallowed_history: Dict[int, Set[int]],
+    max_candidates: int = 10000
+) -> Optional[int]:
+    """Search deterministic candidate salts [0 .. max_candidates-1] for a conflict-free schedule.
+
+    Tests candidate schedules against confirmed prior historical pairings.
+    Returns the first salt index with zero conflicts, or None if no feasible salt exists.
+    """
+    for s in range(max_candidates):
+        mapping = shuffled_repeating_rotation(
+            family_ids=family_ids,
+            year=year,
+            anchor_year=anchor_year,
+            seed=seed,
+            salt=str(s)
+        )
+        conflicts = validate_mapping_against_history(mapping, disallowed_history)
+        if not conflicts:
+            return s
+    return None
+
+
+def fixed_rotation(
+    household_order: List[int],
+    offset_order: List[int],
+    year: int,
+    anchor_year: int
+) -> Dict[int, int]:
+    """Generate assignment from organizer's custom household order and offset sequence.
+
+    Guarantees:
+    - Strict adherence to organizer's persisted permutation.
+    - Exact 1-to-1 derangement.
+    - Period equal to len(offset_order) (typically n-1).
+    - Sliding window coverage for K >= len(offset_order).
+    """
+    n = len(household_order)
+    if n < 2:
+        raise AssignmentError("At least 2 families required for fixed rotation.")
+    if len(offset_order) < 1:
+        raise AssignmentError("At least 1 offset required for fixed rotation.")
+
+    cycle_length = len(offset_order)
+    step = (year - anchor_year) % cycle_length
+    shift = offset_order[step]
+
+    assignments = {}
+    for i, giver in enumerate(household_order):
+        receiver = household_order[(i + shift) % n]
+        assignments[giver] = receiver
+
+    return assignments
+
+
+def validate_fixed_rotation_config(
+    household_order: List[int],
+    offset_order: List[int],
+    active_family_ids: List[int]
+) -> Tuple[bool, List[str]]:
+    """Validate that fixed rotation configuration matches active family roster."""
+    errors = []
+    n = len(active_family_ids)
+    if sorted(household_order) != sorted(active_family_ids):
+        errors.append(
+            f"Household order must include every active family exactly once (expected {n} families)."
+        )
+    expected_offsets = list(range(1, n))
+    if sorted(offset_order) != expected_offsets:
+        errors.append(
+            f"Offset order must be a permutation of offsets 1 through {n - 1} (e.g. {expected_offsets})."
+        )
+    return (len(errors) == 0, errors)
 
 
 def predictable_rotation(
@@ -272,7 +497,8 @@ def get_cycle_info(
 
 def analyze_history_coverage(
     family_ids: List[int],
-    history_by_year: Dict[int, Dict[int, int]]
+    history_by_year: Dict[int, Dict[int, int]],
+    coverage_k: int = 4
 ) -> Dict[str, object]:
     """Analyze historical assignments for fairness, coverage, and repeats.
 
@@ -280,7 +506,7 @@ def analyze_history_coverage(
     """
     n = len(family_ids)
     sorted_years = sorted(history_by_year.keys())
-    
+
     # Track recipients per giver
     giver_recipients: Dict[int, List[Tuple[int, int]]] = {fid: [] for fid in family_ids}
     # Track pairs (giver, receiver) across years
@@ -319,11 +545,56 @@ def analyze_history_coverage(
             "unassigned_count": max(0, (n - 1) - len(distinct_recipients)) if n > 1 else 0
         }
 
+    # Evaluate sliding windows of length K across recorded years
+    sliding_window_coverage = []
+    missing_years = []
+    coverage_proven = True
+
+    if len(sorted_years) >= 2:
+        all_expected_years = set(range(min(sorted_years), max(sorted_years) + 1))
+        missing_years = sorted(list(all_expected_years - set(sorted_years)))
+        if missing_years:
+            coverage_proven = False
+
+    if coverage_k >= 1 and len(sorted_years) >= coverage_k:
+        for start_idx in range(len(sorted_years) - coverage_k + 1):
+            window_years = sorted_years[start_idx : start_idx + coverage_k]
+            # Check if contiguous
+            is_contiguous = (window_years[-1] - window_years[0] == coverage_k - 1)
+            window_givers_covered = 0
+            for fid in family_ids:
+                window_recipients = set()
+                for yr in window_years:
+                    rec = history_by_year[yr].get(fid)
+                    if rec is not None:
+                        window_recipients.add(rec)
+                if len(window_recipients) == n - 1:
+                    window_givers_covered += 1
+
+            sliding_window_coverage.append({
+                "years": (window_years[0], window_years[-1]),
+                "is_contiguous": is_contiguous,
+                "all_families_covered": (window_givers_covered == n) if n > 1 else True,
+                "fully_covered_families_count": window_givers_covered
+            })
+
+    historical_note = ""
+    if missing_years:
+        historical_note = (
+            f"Note: Historical data has gaps (missing years: {missing_years}). "
+            f"Past rolling coverage cannot be certified from incomplete archives. "
+            f"However, the planned future cycle is mathematically guaranteed to achieve rolling coverage."
+        )
+
     return {
         "total_years_recorded": len(sorted_years),
         "consecutive_repeats": consecutive_repeats,
         "family_stats": stats_per_family,
-        "pair_history": pair_history
+        "pair_history": pair_history,
+        "sliding_window_coverage": sliding_window_coverage,
+        "missing_years": missing_years,
+        "coverage_proven": coverage_proven,
+        "historical_note": historical_note
     }
 
 
@@ -372,7 +643,10 @@ def simulate_assignment(
     year: int,
     anchor_year: int,
     seed: str,
-    history_disallowed: Optional[Dict[int, Set[int]]] = None
+    history_disallowed: Optional[Dict[int, Set[int]]] = None,
+    salt: str = "0",
+    fixed_household_order: Optional[List[int]] = None,
+    fixed_offset_order: Optional[List[int]] = None
 ) -> Dict[int, int]:
     """Pure in-memory simulation of an assignment for the test lab.
 
@@ -381,7 +655,14 @@ def simulate_assignment(
     if len(family_ids) < 2:
         raise AssignmentError("At least 2 active families are required for test simulation.")
 
-    if mode == "predictable_rotation":
+    if mode in ("shuffled_rotation", "shuffled_repeating_rotation"):
+        mapping = shuffled_repeating_rotation(family_ids, year, anchor_year, seed, salt=salt)
+    elif mode == "fixed_rotation":
+        if fixed_household_order and fixed_offset_order:
+            mapping = fixed_rotation(fixed_household_order, fixed_offset_order, year, anchor_year)
+        else:
+            mapping = predictable_rotation(family_ids, year, anchor_year)
+    elif mode == "predictable_rotation":
         mapping = predictable_rotation(family_ids, year, anchor_year)
     elif mode == "randomized_cycle":
         mapping = randomized_coverage_cycle(family_ids, year, anchor_year, seed)
@@ -405,7 +686,10 @@ def batch_simulate_assignments(
     anchor_year: int,
     seed: str,
     lookback_years: int = 1,
-    num_runs: int = 100
+    num_runs: int = 100,
+    salt: str = "0",
+    fixed_household_order: Optional[List[int]] = None,
+    fixed_offset_order: Optional[List[int]] = None
 ) -> Dict[str, object]:
     """Run batch Monte Carlo simulations (e.g. 100 runs) for the test lab.
 
@@ -437,9 +721,23 @@ def batch_simulate_assignments(
                             disallowed[g].add(r)
 
         try:
-            if mode == "predictable_rotation":
+            if mode in ("shuffled_rotation", "shuffled_repeating_rotation"):
+                mapping = shuffled_repeating_rotation(family_ids, sim_year, anchor_year, seed, salt=salt)
+                conflicts = validate_mapping_against_history(mapping, disallowed)
+                if conflicts and lookback_years > 0 and run_idx > 0:
+                    infeasible_runs += 1
+                    continue
+            elif mode == "fixed_rotation":
+                if fixed_household_order and fixed_offset_order:
+                    mapping = fixed_rotation(fixed_household_order, fixed_offset_order, sim_year, anchor_year)
+                else:
+                    mapping = predictable_rotation(family_ids, sim_year, anchor_year)
+                conflicts = validate_mapping_against_history(mapping, disallowed)
+                if conflicts and lookback_years > 0 and run_idx > 0:
+                    infeasible_runs += 1
+                    continue
+            elif mode == "predictable_rotation":
                 mapping = predictable_rotation(family_ids, sim_year, anchor_year)
-                # Check for history conflict
                 conflicts = validate_mapping_against_history(mapping, disallowed)
                 if conflicts and lookback_years > 0 and run_idx > 0:
                     infeasible_runs += 1
@@ -474,6 +772,11 @@ def batch_simulate_assignments(
         "num_runs": num_runs,
         "successful_runs": successful_runs,
         "infeasible_runs": infeasible_runs,
+        "repeat_violations": infeasible_runs,
+        "total_assignments_generated": successful_runs * n,
+        "distinct_pairs_seen": len(pair_counts),
+        "possible_pairs": n * (n - 1) if n > 1 else 0,
+        "matrix": giver_counts,
         "pair_counts": {f"{g}->{r}": count for (g, r), count in pair_counts.items()},
         "giver_counts": giver_counts,
         "min_freq": min_freq,

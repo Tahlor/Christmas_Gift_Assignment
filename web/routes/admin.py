@@ -26,14 +26,22 @@ from web.assignment import (
     analyze_history_coverage,
     batch_simulate_assignments,
     compute_roster_hash,
+    find_deterministic_rotation_salt,
+    fixed_rotation,
+    generate_shuffled_rotation_schedule,
     generate_synthetic_roster,
     get_cycle_info,
     predictable_rotation,
     randomized_coverage_cycle,
+    shuffled_repeating_rotation,
     simulate_assignment,
     uniform_random_derangement,
+    validate_fixed_rotation_config,
     validate_mapping_against_history,
+    validate_rules_feasibility,
 )
+from web.continuity import find_boundary_conflicts, find_boundary_safe_salt, confirmed_history_by_year
+from web.db import get_db
 from web.email_service import (
     generate_mailto_link,
     get_email_logs_for_year,
@@ -49,13 +57,21 @@ from web.models import (
     discard_draft_assignments,
     export_families_to_csv,
     export_history_to_csv,
+    get_address_review,
+    get_admin_tracking_data,
+    get_all_address_reviews,
     get_all_families,
+    get_all_family_activities_for_year,
     get_all_settings,
+    get_archive_metadata,
     get_assignments_for_year,
+    get_family_activity,
     get_family_by_id,
     get_guess_participation,
+    get_guess_submission_status,
     get_historical_years_summary,
     get_history_by_year,
+    get_pending_address_reviews,
     get_production_seed,
     get_recent_history_disallowed,
     get_seed_fingerprint,
@@ -65,10 +81,16 @@ from web.models import (
     import_manual_history_from_csv,
     is_guesses_revealed,
     is_year_published,
+    mark_address_reviewed,
     publish_assignments,
+    record_family_assignment_confirmation,
+    record_family_guess_submission,
+    record_family_visit,
+    record_family_wishlist_update,
     regenerate_production_seed,
     reveal_guesses_for_year,
     revoke_family_token,
+    save_archive_metadata,
     save_draft_assignments,
     save_manual_history_for_year,
     set_production_seed,
@@ -76,6 +98,7 @@ from web.models import (
     toggle_family_active,
     unpublish_assignments,
     update_family,
+    upsert_address_review,
 )
 from web.security import (
     admin_required,
@@ -189,19 +212,44 @@ def admin_logout():
 @admin_bp.route("/admin/dashboard", methods=["GET"])
 @admin_required
 def dashboard():
-    """Main administrative dashboard displaying status, metrics, and assignment tools."""
+    """Main administrative dashboard with unified Test / Official mode switch."""
+    mode_arg = request.args.get("mode")
+    if mode_arg in ("test", "official"):
+        session["admin_mode"] = mode_arg
+    is_test_mode = (session.get("admin_mode", "official") == "test")
+
     settings = get_all_settings()
     current_year = int(settings.get("current_year", datetime.now().year))
     anchor_year = int(settings.get("cycle_anchor_year", current_year))
-    mode = settings.get("assignment_mode", "randomized_cycle")
+    mode = settings.get("assignment_mode", "shuffled_rotation")
     no_repeat_years = int(settings.get("no_repeat_years", "1"))
+    enforce_sliding_coverage = (settings.get("enforce_sliding_coverage", "1") == "1")
+    coverage_window_k = int(settings.get("coverage_window_k", "4"))
+    rotation_salt = settings.get("rotation_salt", "")
+    fixed_household_order = settings.get("fixed_household_order", "")
+    fixed_offset_order = settings.get("fixed_offset_order", "")
+
+    # Keep the exact choices after a test run when switching to Official.
+    # This session-only draft NEVER changes saved production settings.
+    draft_rules = session.get("draft_rule_config")
+    if draft_rules:
+        mode = draft_rules["mode"]
+        no_repeat_years = draft_rules["no_repeat_years"]
+        coverage_window_k = draft_rules["coverage_window_k"]
+        enforce_sliding_coverage = draft_rules["enforce_sliding_coverage"]
 
     all_families = get_all_families()
     active_families = [f for f in all_families if f["active"] == 1]
     active_ids = [f["id"] for f in active_families]
     n = len(active_ids)
 
-    # Mathematical cycle information
+    # Mathematical rules feasibility check
+    feasibility = validate_rules_feasibility(
+        n=n,
+        lookback_l=no_repeat_years,
+        coverage_k=coverage_window_k,
+        enforce_coverage=enforce_sliding_coverage
+    )
     cycle_info = get_cycle_info(n, current_year, anchor_year)
     is_roster_stable, roster_warning = check_roster_stability(active_ids)
 
@@ -211,10 +259,8 @@ def dashboard():
     email_statuses = get_latest_email_status_per_family(current_year)
     smtp_available = is_smtp_configured()
 
-    # Invitation progress
-    invited_count = sum(1 for a in assignments if email_statuses.get(a["giver_id"], {}).get("status") == "sent")
+    invited_count = sum(1 for a in assignments if email_statuses.get(a["giver_id"], {}).get("status") in ("sent", "success"))
 
-    # Mailto links map
     base_url = request.host_url.rstrip("/")
     mailto_links = {}
     portal_links = {}
@@ -239,18 +285,47 @@ def dashboard():
     spoilers_unlocked = bool(session.get("spoilers_unlocked", False))
     seed_fingerprint = get_seed_fingerprint()
     has_published = has_published_years()
+
+    # Address reviews
+    pending_address_reviews = get_pending_address_reviews()
+
+    # Family tracking data (compact admin tracking table)
+    tracking_data = get_admin_tracking_data(current_year, spoilers_unlocked=spoilers_unlocked)
+    for row in tracking_data:
+        p_url = f"{base_url}/christmas/f/{row['access_token']}"
+        row["portal_url"] = p_url
+        row["mailto_url"] = generate_mailto_link(
+            family_name=row["name"],
+            emails=row["emails"],
+            portal_url=p_url,
+            year=current_year
+        )
+
+    # Guess submission status
+    guess_submission_status = get_guess_submission_status(current_year)
     guess_stats = get_guess_participation(current_year)
-    game_scores = calculate_game_scores(current_year) if (is_published and is_guesses_revealed(current_year)) else None
+    is_revealed = is_guesses_revealed(current_year)
+    game_scores = calculate_game_scores(current_year) if (is_published and is_revealed) else None
+
+    # Test mode state (from session if simulation was run)
+    test_sim_data = session.pop("test_sim_data", None)
 
     return render_template(
         "admin/dashboard.html",
+        is_test_mode=is_test_mode,
         current_year=current_year,
         anchor_year=anchor_year,
         mode=mode,
         no_repeat_years=no_repeat_years,
+        enforce_sliding_coverage=enforce_sliding_coverage,
+        coverage_window_k=coverage_window_k,
+        rotation_salt=rotation_salt,
+        fixed_household_order=fixed_household_order,
+        fixed_offset_order=fixed_offset_order,
         all_families=all_families,
         active_families=active_families,
         n=n,
+        feasibility=feasibility,
         cycle_info=cycle_info,
         is_roster_stable=is_roster_stable,
         roster_warning=roster_warning,
@@ -266,8 +341,13 @@ def dashboard():
         spoilers_unlocked=spoilers_unlocked,
         seed_fingerprint=seed_fingerprint,
         has_published=has_published,
+        pending_address_reviews=pending_address_reviews,
+        tracking_data=tracking_data,
+        guess_submission_status=guess_submission_status,
         guess_stats=guess_stats,
-        game_scores=game_scores
+        is_revealed=is_revealed,
+        game_scores=game_scores,
+        test_sim_data=test_sim_data
     )
 
 
@@ -322,23 +402,51 @@ def prepare_assignments():
     """Generate official assignments and seal them as draft without revealing or emailing."""
     current_year = int(get_setting("current_year", str(datetime.now().year)))
     anchor_year = int(get_setting("cycle_anchor_year", str(current_year)))
-    mode = request.form.get("assignment_mode", get_setting("assignment_mode", "randomized_cycle"))
+    mode = request.form.get("assignment_mode", get_setting("assignment_mode", "shuffled_rotation"))
     lookback = max(0, int(request.form.get("no_repeat_years", get_setting("no_repeat_years", "1"))))
+    enforce_coverage = (request.form.get("enforce_sliding_coverage", get_setting("enforce_sliding_coverage", "1")) == "1")
+    coverage_k = max(1, int(request.form.get("coverage_window_k", get_setting("coverage_window_k", "4"))))
 
     if is_year_published(current_year):
         flash(f"Assignments for {current_year} are already published and cannot be modified.", "error")
+        return redirect(url_for("admin.dashboard"))
+    if get_assignments_for_year(current_year):
+        flash("A sealed draft already exists. Discard that draft explicitly before preparing a new one.", "error")
         return redirect(url_for("admin.dashboard"))
 
     active_families = get_all_families(active_only=True)
     family_ids = [f["id"] for f in active_families]
     family_map = {f["id"]: f["name"] for f in active_families}
+    n = len(family_ids)
 
-    if len(family_ids) < 2:
+    if n < 2:
         flash("At least 2 active families are required to generate assignments.", "error")
         return redirect(url_for("admin.dashboard"))
 
+    # Validate mathematical feasibility
+    feasibility = validate_rules_feasibility(n, lookback, coverage_k, enforce_coverage)
+    if not feasibility["is_feasible"]:
+        if request.form.get("waiver") == "1":
+            old_l, old_k = lookback, coverage_k
+            lookback = feasibility["suggested_lookback"]
+            coverage_k = feasibility["suggested_coverage_window"]
+            flash(
+                f"Using your explicitly approved feasible limits: no-repeat {old_l} -> {lookback} years; "
+                f"coverage {old_k} -> {coverage_k} years. The original impossible settings were NOT promised.",
+                "warning",
+            )
+        else:
+            flash(f"These rules cannot both be guaranteed: {' '.join(feasibility['errors'])} "
+                  "Correct the numbers or explicitly choose the suggested limits.", "error")
+            return redirect(url_for("admin.dashboard"))
+
+    if enforce_coverage and mode in ("uniform_random", "randomized_cycle"):
+        flash("This method cannot guarantee coverage in EVERY sliding window. "
+              "Choose Shuffled repeating rotation or Fixed rotation, or turn off the coverage guarantee.", "error")
+        return redirect(url_for("admin.dashboard"))
+
     stable, warning = check_roster_stability(family_ids)
-    if mode in ("predictable_rotation", "randomized_cycle") and not stable:
+    if mode in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation", "predictable_rotation", "randomized_cycle") and not stable:
         flash(warning + " Reset the cycle anchor explicitly before preparing a complete cycle.", "error")
         return redirect(url_for("admin.dashboard"))
 
@@ -346,11 +454,94 @@ def prepare_assignments():
     history_disallowed = get_recent_history_disallowed(family_ids, current_year, lookback)
 
     try:
-        if mode == "predictable_rotation":
+        if mode in ("shuffled_rotation", "shuffled_repeating_rotation"):
+            history_by_year = confirmed_history_by_year(get_db(), current_year, lookback)
+            persisted_salt = get_setting("rotation_salt", "")
+            official_exists = has_published_years()
+            chosen_salt = None
+
+            if persisted_salt:
+                planned = lambda yr: shuffled_repeating_rotation(
+                    family_ids, yr, anchor_year, cycle_secret, salt=persisted_salt)
+                boundary_issues = find_boundary_conflicts(
+                    planned, history_by_year, current_year, lookback)
+                if boundary_issues:
+                    if official_exists:
+                        flash("The saved official rotation conflicts with the imported historical lookback. "
+                              "Published rotation cannot be silently reseeded. Review the history or adjust the rules.",
+                              "error")
+                        return redirect(url_for("admin.dashboard"))
+                else:
+                    chosen_salt = persisted_salt
+
+            if chosen_salt is None:
+                if official_exists:
+                    flash("An official draw already exists, but its stable rotation salt is missing. "
+                          "Refusing to silently choose a new production schedule.", "error")
+                    return redirect(url_for("admin.dashboard"))
+                chosen_salt = find_boundary_safe_salt(
+                    family_ids, current_year, anchor_year, cycle_secret,
+                    history_by_year, lookback, max_candidates=10000)
+                if chosen_salt is None:
+                    flash("No shuffled rotation satisfied the historical boundary for all upcoming years "
+                          f"within the {lookback}-year no-repeat limit. "
+                          "Adjust the lookback or verified history; no official assignments were generated.",
+                          "error")
+                    return redirect(url_for("admin.dashboard"))
+                set_setting("rotation_salt", chosen_salt)
+                set_setting("roster_anchor_hash", compute_roster_hash(family_ids))
+
+            mapping = shuffled_repeating_rotation(
+                family_ids, current_year, anchor_year, cycle_secret, salt=chosen_salt)
+
+        elif mode == "fixed_rotation":
+            raw_h = request.form.get("fixed_household_order") or get_setting("fixed_household_order", "")
+            raw_o = request.form.get("fixed_offset_order") or get_setting("fixed_offset_order", "")
+
+            try:
+                h_order = [int(x.strip()) for x in raw_h.split(",") if x.strip()]
+            except ValueError:
+                h_order = []
+            try:
+                o_order = [int(x.strip()) for x in raw_o.split(",") if x.strip()]
+            except ValueError:
+                o_order = []
+
+            if not h_order:
+                h_order = sorted(family_ids)
+            if not o_order:
+                o_order = list(range(1, n))
+
+            is_valid, errs = validate_fixed_rotation_config(h_order, o_order, family_ids)
+            if not is_valid:
+                flash(f"Fixed rotation configuration error: {' '.join(errs)}", "error")
+                return redirect(url_for("admin.dashboard"))
+
+            mapping = fixed_rotation(h_order, o_order, current_year, anchor_year)
+            set_setting("fixed_household_order", ",".join(str(i) for i in h_order))
+            set_setting("fixed_offset_order", ",".join(str(i) for i in o_order))
+            history_by_year = confirmed_history_by_year(get_db(), current_year, lookback)
+            conflicts = find_boundary_conflicts(
+                lambda yr: fixed_rotation(h_order, o_order, yr, anchor_year),
+                history_by_year, current_year, lookback)
+            if conflicts:
+                c_givers = ", ".join(family_map.get(g, f"#{g}") for _, g, _, _ in conflicts[:2])
+                flash(
+                    f"Fixed rotation for {current_year} conflicts with the requested {lookback}-year lookback constraint "
+                    f"for family ({c_givers}). Refusing to create assignments that violate explicit requested constraints. "
+                    "Adjust fixed offset order, reduce lookback, or switch to Shuffled Repeating Rotation.",
+                    "error"
+                )
+                return redirect(url_for("admin.dashboard"))
+
+        elif mode == "predictable_rotation":
             mapping = predictable_rotation(family_ids, current_year, anchor_year)
-            conflicts = validate_mapping_against_history(mapping, history_disallowed)
-            if conflicts and lookback > 0:
-                c_givers = ", ".join(family_map.get(g, f"#{g}") for g, _ in conflicts[:2])
+            history_by_year = confirmed_history_by_year(get_db(), current_year, lookback)
+            conflicts = find_boundary_conflicts(
+                lambda yr: predictable_rotation(family_ids, yr, anchor_year),
+                history_by_year, current_year, lookback)
+            if conflicts:
+                c_givers = ", ".join(family_map.get(g, f"#{g}") for _, g, _, _ in conflicts[:2])
                 flash(
                     f"Predictable rotation for {current_year} violates the requested {lookback}-year lookback constraint "
                     f"for family ({c_givers}). Refusing to create assignments that violate explicit requested constraints. "
@@ -376,11 +567,31 @@ def prepare_assignments():
             flash(f"Unknown assignment mode: {mode}", "error")
             return redirect(url_for("admin.dashboard"))
 
+        # Save settings used
+        set_setting("assignment_mode", mode)
+        set_setting("no_repeat_years", str(lookback))
+        set_setting("enforce_sliding_coverage", "1" if enforce_coverage else "0")
+        set_setting("coverage_window_k", str(coverage_k))
+
         save_draft_assignments(current_year, mapping)
+        # Snapshot configuration at the moment the real mappings are sealed.
+        save_archive_metadata(
+            year=current_year, assignment_mode=mode,
+            no_repeat_years=lookback, coverage_window=coverage_k,
+            seed_fingerprint=get_seed_fingerprint(),
+            roster_signature=compute_roster_hash(family_ids),
+            config_json=json.dumps({
+                "anchor_year": anchor_year,
+                "rotation_salt": get_setting("rotation_salt", ""),
+                "fixed_household_order": get_setting("fixed_household_order", ""),
+                "fixed_offset_order": get_setting("fixed_offset_order", "")
+            }, sort_keys=True)
+        )
+        session.pop("draft_rule_config", None)
         session.pop("assignment_preview", None)
         flash(
             f"Official assignments for Christmas {current_year} have been prepared and sealed as draft! "
-            "They remain hidden and are not visible to families until you click 'Release to Families'.",
+            "They remain hidden behind spoiler protection and are not visible to families until you click 'Release to Families'.",
             "success"
         )
     except (AssignmentError, AssignmentInfeasibleError, ValueError) as exc:
@@ -416,26 +627,62 @@ def preview_assignments():
     """Generate and preview assignments without saving or publishing."""
     current_year = int(get_setting("current_year", str(datetime.now().year)))
     anchor_year = int(get_setting("cycle_anchor_year", str(current_year)))
-    mode = request.form.get("assignment_mode", get_setting("assignment_mode", "randomized_cycle"))
+    mode = request.form.get("assignment_mode", get_setting("assignment_mode", "shuffled_rotation"))
     cycle_secret = get_production_seed()
     lookback = max(0, int(request.form.get("no_repeat_years", get_setting("no_repeat_years", "1"))))
 
     active_families = get_all_families(active_only=True)
     family_map = {f["id"]: f["name"] for f in active_families}
     family_ids = [f["id"] for f in active_families]
+    n = len(family_ids)
 
-    if len(family_ids) < 2:
+    if n < 2:
         flash("At least 2 active families are required to generate assignments.", "error")
         return redirect(url_for("admin.dashboard"))
 
     stable, warning = check_roster_stability(family_ids)
-    if mode in ("predictable_rotation", "randomized_cycle") and not stable:
+    if mode in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation", "predictable_rotation", "randomized_cycle") and not stable:
         flash(warning + " Reset the cycle anchor explicitly before previewing another complete cycle.", "error")
         return redirect(url_for("admin.dashboard"))
 
     try:
         history_disallowed = get_recent_history_disallowed(family_ids, current_year, lookback)
-        if mode == "predictable_rotation":
+        if mode in ("shuffled_rotation", "shuffled_repeating_rotation"):
+            salt = get_setting("rotation_salt", "0")
+            mapping = shuffled_repeating_rotation(family_ids, current_year, anchor_year, cycle_secret, salt=salt)
+            conflicts = validate_mapping_against_history(mapping, history_disallowed)
+            if conflicts and lookback > 0:
+                flash(
+                    f"Shuffled repeating rotation conflicts with the requested {lookback}-year lookback constraint. "
+                    "Refusing to preview assignments that violate explicit requested constraints.",
+                    "error"
+                )
+                return redirect(url_for("admin.dashboard"))
+        elif mode == "fixed_rotation":
+            raw_h = request.form.get("fixed_household_order") or get_setting("fixed_household_order", "")
+            raw_o = request.form.get("fixed_offset_order") or get_setting("fixed_offset_order", "")
+            try:
+                h_order = [int(x.strip()) for x in raw_h.split(",") if x.strip()]
+            except ValueError:
+                h_order = []
+            try:
+                o_order = [int(x.strip()) for x in raw_o.split(",") if x.strip()]
+            except ValueError:
+                o_order = []
+            if not h_order:
+                h_order = sorted(family_ids)
+            if not o_order:
+                o_order = list(range(1, n))
+            mapping = fixed_rotation(h_order, o_order, current_year, anchor_year)
+            conflicts = validate_mapping_against_history(mapping, history_disallowed)
+            if conflicts and lookback > 0:
+                flash(
+                    f"Fixed rotation conflicts with the requested {lookback}-year lookback constraint. "
+                    "Refusing to preview assignments that violate explicit requested constraints.",
+                    "error"
+                )
+                return redirect(url_for("admin.dashboard"))
+        elif mode == "predictable_rotation":
             mapping = predictable_rotation(family_ids, current_year, anchor_year)
             conflicts = validate_mapping_against_history(mapping, history_disallowed)
             if conflicts and lookback > 0:
@@ -723,32 +970,53 @@ def export_families():
     )
 
 
+@admin_bp.route("/admin/address-reviews/<int:family_id>/mark-reviewed", methods=["POST"])
+@admin_required
+def mark_address_review(family_id: int):
+    """Mark a family's address review as manually confirmed and reviewed."""
+    fam = get_family_by_id(family_id)
+    if not fam:
+        abort(404)
+    mark_address_reviewed(family_id)
+    flash(f"Address review for '{fam['name']}' confirmed and marked as reviewed.", "success")
+    return redirect(url_for("admin.dashboard"))
+
+
 # ---------------------------------------------------------
-# Test Lab View
+# Test Lab View & Simulation (Redirects to Unified Dashboard)
 # ---------------------------------------------------------
 
 @admin_bp.route("/admin/test-lab", methods=["GET", "POST"])
+@admin_bp.route("/admin/test-sim", methods=["POST"])
 @admin_required
 def test_lab():
-    """Test lab for experimenting with assignment algorithms and simulating runs.
+    """Test simulation sandbox. GET redirects to dashboard?mode=test.
 
-    Guarantees:
-    - Pure in-memory simulation.
-    - Never modifies official database assignments, settings, or production seed.
-    - Prominently watermarked as 'TEST - NOT REAL'.
+    POST executes pure in-memory simulations without mutating production state,
+    then redirects to the unified dashboard in test mode to display results.
     """
+    if request.method == "GET":
+        return redirect(url_for("admin.dashboard", mode="test"))
+
     settings = get_all_settings()
     current_year = int(settings.get("current_year", datetime.now().year))
     active_families = get_all_families(active_only=True)
 
-    mode = request.form.get("assignment_mode", "randomized_cycle") if request.method == "POST" else "randomized_cycle"
-    year = int(request.form.get("year", current_year)) if request.method == "POST" else current_year
-    anchor_year = int(request.form.get("anchor_year", current_year)) if request.method == "POST" else current_year
-    test_seed = request.form.get("test_seed", "test-lab-seed-2026").strip() if request.method == "POST" else "test-lab-seed-2026"
-    roster_choice = request.form.get("roster_choice", "current") if request.method == "POST" else "current"
-    custom_n = int(request.form.get("custom_n", "5")) if request.method == "POST" else 5
-    lookback = max(0, int(request.form.get("no_repeat_years", "1"))) if request.method == "POST" else 1
-    sim_type = request.form.get("sim_type", "single") if request.method == "POST" else "single"
+    mode = request.form.get("assignment_mode", "shuffled_rotation")
+    year = int(request.form.get("year", current_year))
+    anchor_year = int(request.form.get("anchor_year", current_year))
+    test_seed = request.form.get("test_seed", "test-lab-seed-2026").strip()
+    roster_choice = request.form.get("roster_choice", "current")
+    custom_n = int(request.form.get("custom_n", "5"))
+    lookback = max(0, int(request.form.get("no_repeat_years", "1")))
+    coverage_k = max(1, int(request.form.get("coverage_window_k", "4")))
+    enforce_coverage = (request.form.get("enforce_sliding_coverage") == "1")
+    sim_type = request.form.get("sim_type", "single")
+    session["draft_rule_config"] = {
+        "mode": mode, "no_repeat_years": lookback,
+        "coverage_window_k": coverage_k,
+        "enforce_sliding_coverage": enforce_coverage,
+    }
 
     # Determine roster to use
     if roster_choice == "synthetic_4":
@@ -776,72 +1044,83 @@ def test_lab():
     batch_result = None
     cycle_info = get_cycle_info(len(family_ids), year, anchor_year)
     error_message = None
+    feasibility = validate_rules_feasibility(
+        len(family_ids), lookback, coverage_k, enforce_coverage)
+    if not feasibility["is_feasible"]:
+        error_message = " ".join(feasibility["errors"])
+    if enforce_coverage and mode in ("uniform_random", "randomized_cycle"):
+        error_message = (
+            "This method does not guarantee coverage in every sliding window. "
+            "Use Shuffled repeating rotation or Custom fixed rotation, or turn off the guarantee."
+        )
 
-    if request.method == "POST":
-        try:
-            if sim_type == "batch_100":
-                batch_result = batch_simulate_assignments(
-                    family_ids=family_ids,
-                    mode=mode,
-                    start_year=year,
-                    anchor_year=anchor_year,
-                    seed=test_seed,
-                    lookback_years=lookback,
-                    num_runs=100
-                )
-            else:
-                history_disallowed = None
-                if roster_choice == "current":
-                    history_disallowed = get_recent_history_disallowed(family_ids, year, lookback)
+    try:
+        if error_message:
+            raise AssignmentError(error_message)
+        if sim_type == "batch_100":
+            batch_result = batch_simulate_assignments(
+                family_ids=family_ids,
+                mode=mode,
+                start_year=year,
+                anchor_year=anchor_year,
+                seed=test_seed,
+                lookback_years=lookback,
+                num_runs=100
+            )
+        else:
+            history_disallowed = None
+            if roster_choice == "current":
+                history_disallowed = get_recent_history_disallowed(family_ids, year, lookback)
 
-                mapping = simulate_assignment(
-                    family_ids=family_ids,
-                    mode=mode,
-                    year=year,
-                    anchor_year=anchor_year,
-                    seed=test_seed,
-                    history_disallowed=history_disallowed
-                )
+            mapping = simulate_assignment(
+                family_ids=family_ids,
+                mode=mode,
+                year=year,
+                anchor_year=anchor_year,
+                seed=test_seed,
+                history_disallowed=history_disallowed
+            )
 
-                conflicts = []
-                if history_disallowed and lookback > 0:
-                    conflicts = validate_mapping_against_history(mapping, history_disallowed)
+            conflicts = []
+            if history_disallowed and lookback > 0:
+                conflicts = validate_mapping_against_history(mapping, history_disallowed)
 
-                single_result = {
-                    "mapping": [
-                        {
-                            "giver_id": g,
-                            "giver_name": family_map.get(g, f"Family #{g}"),
-                            "receiver_id": r,
-                            "receiver_name": family_map.get(r, f"Family #{r}"),
-                            "has_conflict": (g, r) in conflicts
-                        }
-                        for g, r in mapping.items()
-                    ],
-                    "conflicts": conflicts
-                }
-        except (AssignmentError, AssignmentInfeasibleError) as exc:
-            error_message = str(exc)
+            single_result = {
+                "mapping": [
+                    {
+                        "giver_id": g,
+                        "giver_name": family_map.get(g, f"Family #{g}"),
+                        "receiver_id": r,
+                        "receiver_name": family_map.get(r, f"Family #{r}"),
+                        "has_conflict": (g, r) in conflicts
+                    }
+                    for g, r in mapping.items()
+                ],
+                "conflicts": conflicts
+            }
+    except (AssignmentError, AssignmentInfeasibleError) as exc:
+        error_message = str(exc)
 
-    return render_template(
-        "admin/test_lab.html",
-        active_tab="test_lab",
-        current_year=current_year,
-        mode=mode,
-        year=year,
-        anchor_year=anchor_year,
-        test_seed=test_seed,
-        roster_choice=roster_choice,
-        custom_n=custom_n,
-        lookback=lookback,
-        sim_type=sim_type,
-        sim_roster=sim_roster,
-        family_map=family_map,
-        cycle_info=cycle_info,
-        single_result=single_result,
-        batch_result=batch_result,
-        error_message=error_message
-    )
+    test_sim_data = {
+        "mode": mode,
+        "year": year,
+        "anchor_year": anchor_year,
+        "test_seed": test_seed,
+        "roster_choice": roster_choice,
+        "custom_n": custom_n,
+        "lookback": lookback,
+        "sim_type": sim_type,
+        "sim_roster": sim_roster,
+        "family_map": family_map,
+        "cycle_info": cycle_info,
+        "single_result": single_result,
+        "batch_result": batch_result,
+        "error_message": error_message
+    }
+
+    session["test_sim_data"] = test_sim_data
+    session["admin_mode"] = "test"
+    return redirect(url_for("admin.dashboard", mode="test"))
 
 
 # ---------------------------------------------------------
@@ -1030,6 +1309,18 @@ def reveal_game():
         flash("Assignments must be released to families before revealing guessing game answers.", "error")
         return redirect(url_for("admin.dashboard"))
 
+    status = get_guess_submission_status(current_year)
+    override = (request.form.get("override_pending") == "1")
+
+    if not status["all_submitted"] and not override:
+        pending_names = [f["name"] for f in status["pending_families"]]
+        flash(
+            f"Cannot reveal answers: {status['submitted_count']} of {status['total_active']} households have submitted ballots. "
+            f"Pending ballots: {', '.join(pending_names)}. All active households must submit ballots before revealing answers (or check the explicit override).",
+            "error"
+        )
+        return redirect(url_for("admin.dashboard"))
+
     reveal_guesses_for_year(current_year)
     flash(f"Guess-the-giver answers for Christmas {current_year} have been revealed to all families! Voting is now locked.", "success")
     return redirect(url_for("admin.dashboard"))
@@ -1042,23 +1333,69 @@ def reveal_game():
 @admin_bp.route("/admin/settings/update", methods=["POST"])
 @admin_required
 def update_settings():
-    """Update system settings from Advanced Settings section."""
+    """Update system and algorithm settings with mathematical validation."""
     current_year = request.form.get("current_year", "").strip()
     anchor_year = request.form.get("cycle_anchor_year", "").strip()
-    mode = request.form.get("assignment_mode", "").strip()
-    no_repeat_years = request.form.get("no_repeat_years", "").strip()
+    assignment_mode = request.form.get("assignment_mode", "").strip()
+    no_repeat_years = request.form.get("no_repeat_years", "1").strip()
+    enforce_coverage = (request.form.get("enforce_sliding_coverage", "0") == "1")
+    coverage_k = request.form.get("coverage_window_k", "4").strip()
+    waiver_confirmed = (request.form.get("waiver_confirmed", "0") == "1")
 
-    if current_year:
+    active_families = get_all_families(active_only=True)
+    n = len(active_families)
+
+    try:
+        l_int = max(0, int(no_repeat_years))
+    except ValueError:
+        l_int = 1
+
+    try:
+        k_int = max(1, int(coverage_k))
+    except ValueError:
+        k_int = 4
+
+    # Validate mathematical feasibility
+    feas = validate_rules_feasibility(n, l_int, k_int, enforce_coverage)
+    if not feas["is_feasible"] and not waiver_confirmed:
+        flash(
+            f"Mathematical check failed: {' '.join(feas['errors'])} "
+            f"Suggested values: Lookback L ≤ {feas['suggested_l']}, Window K ≥ {feas['suggested_k']}. "
+            f"To bypass this check, you must explicitly confirm the waiver checkbox.",
+            "error"
+        )
+        return redirect(url_for("admin.dashboard"))
+
+    if current_year.isdigit() and len(current_year) == 4:
         set_setting("current_year", current_year)
-    if anchor_year:
+    if anchor_year.isdigit() and len(anchor_year) == 4:
         set_setting("cycle_anchor_year", anchor_year)
-    if mode in ("randomized_cycle", "predictable_rotation", "uniform_random"):
-        set_setting("assignment_mode", mode)
-    if no_repeat_years.isdigit():
-        val = max(0, int(no_repeat_years))
-        set_setting("no_repeat_years", str(val))
+    if assignment_mode in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation", "randomized_cycle", "predictable_rotation", "uniform_random"):
+        set_setting("assignment_mode", assignment_mode)
 
-    flash("Settings updated successfully.", "success")
+    set_setting("no_repeat_years", str(l_int))
+    set_setting("enforce_sliding_coverage", "1" if enforce_coverage else "0")
+    set_setting("coverage_window_k", str(k_int))
+
+    # Fixed rotation config
+    fixed_h = request.form.get("fixed_household_order", "").strip()
+    fixed_o = request.form.get("fixed_offset_order", "").strip()
+    if fixed_h:
+        set_setting("fixed_household_order", fixed_h)
+    if fixed_o:
+        set_setting("fixed_offset_order", fixed_o)
+
+    curr_yr_int = int(get_setting("current_year", "2026"))
+    existing_assignments = get_assignments_for_year(curr_yr_int)
+    if existing_assignments:
+        flash(
+            "Settings updated. Notice: Official assignments have already been prepared/published for this year. "
+            "Altering settings will not affect current assignments unless you discard draft and regenerate.",
+            "warning"
+        )
+    else:
+        flash("Settings updated successfully.", "success")
+
     return redirect(url_for("admin.dashboard"))
 
 

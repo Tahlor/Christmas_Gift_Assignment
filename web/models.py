@@ -373,6 +373,7 @@ def discard_draft_assignments(year: int):
     db = get_db()
     with db:
         db.execute("DELETE FROM assignments WHERE year = ? AND published = 0", (year,))
+        db.execute("DELETE FROM archive_metadata WHERE year = ?", (year,))
 
 
 def publish_assignments(year: int):
@@ -406,6 +407,24 @@ def publish_assignments(year: int):
                 updated_at = excluded.updated_at
             """,
             (year, now, now)
+        )
+
+    # Save immutable archive metadata for the official published exchange
+    mode = get_setting("assignment_mode", "shuffled_rotation")
+    no_repeat = int(get_setting("no_repeat_years", "1"))
+    coverage_k = int(get_setting("coverage_window_k", "4"))
+    seed_fp = get_seed_fingerprint()
+    roster_sig = compute_roster_hash(list(active_ids))
+    # A production prepare step normally saved immutable metadata already.
+    # Keep the original snapshot, even if Settings were subsequently edited.
+    if get_archive_metadata(year) is None:
+        save_archive_metadata(
+            year=year,
+            assignment_mode=mode,
+            no_repeat_years=no_repeat,
+            coverage_window=coverage_k,
+            seed_fingerprint=seed_fp,
+            roster_signature=roster_sig
         )
 
 
@@ -696,7 +715,7 @@ def import_manual_history_from_csv(
 
 
 def get_historical_years_summary() -> List[Dict[str, object]]:
-    """Return overview of all recorded years with provenance, confidence, and pairing count."""
+    """Return overview of all recorded years with provenance, confidence, archive metadata, and pairing count."""
     db = get_db()
     rows = db.execute(
         """
@@ -707,9 +726,16 @@ def get_historical_years_summary() -> List[Dict[str, object]]:
             COUNT(*) as pairing_count,
             a.published,
             MAX(a.published_at) as published_at,
-            h.notes
+            h.notes,
+            m.assignment_mode,
+            m.no_repeat_years,
+            m.coverage_window,
+            m.seed_fingerprint,
+            m.roster_signature,
+            m.config_json
         FROM assignments a
         LEFT JOIN historical_years h ON a.year = h.year
+        LEFT JOIN archive_metadata m ON a.year = m.year
         WHERE a.published = 1
         GROUP BY a.year, a.provenance, a.confidence
         ORDER BY a.year DESC
@@ -724,7 +750,13 @@ def get_historical_years_summary() -> List[Dict[str, object]]:
             "pairing_count": r["pairing_count"],
             "published": r["published"],
             "published_at": r["published_at"],
-            "notes": r["notes"] or ""
+            "notes": r["notes"] or "",
+            "assignment_mode": r["assignment_mode"] or "",
+            "no_repeat_years": r["no_repeat_years"] if r["no_repeat_years"] is not None else "",
+            "coverage_window": r["coverage_window"] if r["coverage_window"] is not None else "",
+            "seed_fingerprint": r["seed_fingerprint"] or "",
+            "roster_signature": r["roster_signature"] or "",
+            "config_json": r["config_json"] or "{}"
         }
         for r in rows
     ]
@@ -787,6 +819,9 @@ def submit_guess_ballot(
                     (year, voting_family_id, receiver_id, guessed_giver_id, now, now)
                 )
 
+    # Mark guess submitted in family_activity even if all guesses are 'not sure'
+    record_family_guess_submission(voting_family_id, year)
+
 
 def get_family_ballot(year: int, voting_family_id: int) -> Dict[int, int]:
     """Retrieve existing guesses for a specific voting family in a year.
@@ -810,18 +845,11 @@ def get_guess_participation(year: int) -> Dict[str, object]:
 
     Returns: {"voted_count": int, "total_active": int, "revealed": bool}
     """
-    db = get_db()
-    active_families = get_all_families(active_only=True)
-    row = db.execute(
-        "SELECT COUNT(DISTINCT voting_family_id) as cnt FROM guess_ballots WHERE year = ?",
-        (year,)
-    ).fetchone()
-    voted_count = row["cnt"] if row else 0
-
+    status = get_guess_submission_status(year)
     return {
-        "voted_count": voted_count,
-        "total_active": len(active_families),
-        "revealed": is_guesses_revealed(year)
+        "voted_count": status["submitted_count"],
+        "total_active": status["total_active"],
+        "revealed": status["revealed"]
     }
 
 
@@ -1073,3 +1101,371 @@ def check_roster_stability(current_active_ids: List[int]) -> Tuple[bool, str]:
         f"The mathematical full-coverage cycle guarantee has reset. "
         f"To restore coverage guarantees for the new roster, reset the cycle anchor."
     )
+
+
+# ---------------------------------------------------------
+# Address Reviews Operations
+# ---------------------------------------------------------
+
+def get_address_review(family_id: int) -> Optional[sqlite3.Row]:
+    """Retrieve address review record for a specific family."""
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM family_address_reviews WHERE family_id = ?",
+        (family_id,)
+    ).fetchone()
+
+
+def get_all_address_reviews() -> List[sqlite3.Row]:
+    """Retrieve all address review records."""
+    db = get_db()
+    return db.execute("SELECT * FROM family_address_reviews").fetchall()
+
+
+def get_pending_address_reviews() -> List[sqlite3.Row]:
+    """Retrieve all address reviews currently marked pending."""
+    db = get_db()
+    return db.execute(
+        """
+        SELECT r.*, f.name as family_name
+        FROM family_address_reviews r
+        JOIN families f ON r.family_id = f.id
+        WHERE r.status = 'pending' AND f.active = 1
+        ORDER BY r.review_due_date ASC
+        """
+    ).fetchall()
+
+
+def mark_address_reviewed(family_id: int):
+    """Mark an address review as confirmed reviewed."""
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with db:
+        db.execute(
+            """
+            UPDATE family_address_reviews
+            SET status = 'reviewed', reviewed_at = ?
+            WHERE family_id = ?
+            """,
+            (now, family_id)
+        )
+
+
+def upsert_address_review(
+    family_id: int,
+    review_due_date: str = "",
+    status: str = "pending",
+    admin_note: str = "",
+    source_sheet_updated_at: str = ""
+):
+    """Insert or update address review specification matching live schema."""
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with db:
+        db.execute(
+            """
+            INSERT INTO family_address_reviews (
+                family_id, review_due_date, status, admin_note,
+                source_sheet_updated_at, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(family_id) DO UPDATE SET
+                review_due_date = excluded.review_due_date,
+                status = excluded.status,
+                admin_note = excluded.admin_note,
+                source_sheet_updated_at = excluded.source_sheet_updated_at
+            """,
+            (family_id, review_due_date, status, admin_note, source_sheet_updated_at, now)
+        )
+
+
+# ---------------------------------------------------------
+# Archive Metadata Operations
+# ---------------------------------------------------------
+
+def save_archive_metadata(
+    year: int,
+    assignment_mode: str,
+    no_repeat_years: int,
+    coverage_window: int,
+    seed_fingerprint: str,
+    roster_signature: str,
+    config_json: str = "{}"
+):
+    """Persist immutable archive metadata for an official exchange publication."""
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with db:
+        db.execute(
+            """
+            INSERT INTO archive_metadata (
+                year, assignment_mode, no_repeat_years, coverage_window,
+                seed_fingerprint, roster_signature, config_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(year) DO NOTHING
+            """,
+            (year, assignment_mode, no_repeat_years, coverage_window,
+             seed_fingerprint, roster_signature, config_json, now)
+        )
+
+
+def get_archive_metadata(year: int) -> Optional[sqlite3.Row]:
+    """Retrieve archive metadata for a specific year."""
+    db = get_db()
+    return db.execute("SELECT * FROM archive_metadata WHERE year = ?", (year,)).fetchone()
+
+
+# ---------------------------------------------------------
+# Family Activity Operations
+# ---------------------------------------------------------
+
+def record_family_visit(family_id: int, year: int):
+    """Record family GET visit on their portal link."""
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with db:
+        db.execute(
+            """
+            INSERT INTO family_activity (family_id, year, last_visit, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(family_id, year) DO UPDATE SET
+                last_visit = excluded.last_visit,
+                updated_at = excluded.updated_at
+            """,
+            (family_id, year, now, now, now)
+        )
+
+
+def record_family_assignment_confirmation(family_id: int, year: int):
+    """Record family's explicit 'I received my assignment' confirmation."""
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with db:
+        db.execute(
+            """
+            INSERT INTO family_activity (family_id, year, assignment_confirmed_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(family_id, year) DO UPDATE SET
+                assignment_confirmed_at = excluded.assignment_confirmed_at,
+                updated_at = excluded.updated_at
+            """,
+            (family_id, year, now, now, now)
+        )
+
+
+def record_family_wishlist_update(family_id: int, year: int):
+    """Record family wish-list POST update timestamp."""
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with db:
+        db.execute(
+            """
+            INSERT INTO family_activity (family_id, year, wishlist_updated_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(family_id, year) DO UPDATE SET
+                wishlist_updated_at = excluded.wishlist_updated_at,
+                updated_at = excluded.updated_at
+            """,
+            (family_id, year, now, now, now)
+        )
+
+
+def record_family_guess_submission(family_id: int, year: int):
+    """Record family guess ballot POST submission marker (even if all guesses are 'not sure')."""
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with db:
+        db.execute(
+            """
+            INSERT INTO family_activity (family_id, year, guess_submitted_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(family_id, year) DO UPDATE SET
+                guess_submitted_at = excluded.guess_submitted_at,
+                updated_at = excluded.updated_at
+            """,
+            (family_id, year, now, now, now)
+        )
+
+
+def get_family_activity(family_id: int, year: int) -> Optional[sqlite3.Row]:
+    """Retrieve activity row for a specific family and year."""
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM family_activity WHERE family_id = ? AND year = ?",
+        (family_id, year)
+    ).fetchone()
+
+
+def get_all_family_activities_for_year(year: int) -> Dict[int, sqlite3.Row]:
+    """Retrieve all family activity records for a given year indexed by family_id."""
+    db = get_db()
+    rows = db.execute("SELECT * FROM family_activity WHERE year = ?", (year,)).fetchall()
+    return {r["family_id"]: r for r in rows}
+
+
+# ---------------------------------------------------------
+# Guess Submission & Admin Tracking Aggregation
+# ---------------------------------------------------------
+
+def get_guess_submission_status(year: int) -> Dict[str, Any]:
+    """Check guess ballot submissions across active households."""
+    active_families = get_all_families(active_only=True)
+    activities = get_all_family_activities_for_year(year)
+
+    db = get_db()
+    ballot_voter_ids = set()
+    b_rows = db.execute("SELECT DISTINCT voting_family_id FROM guess_ballots WHERE year = ?", (year,)).fetchall()
+    for b in b_rows:
+        ballot_voter_ids.add(b["voting_family_id"])
+
+    submitted = []
+    pending = []
+
+    for f in active_families:
+        fid = f["id"]
+        act = activities.get(fid)
+        has_submitted = bool((act and act["guess_submitted_at"]) or (fid in ballot_voter_ids))
+        if has_submitted:
+            submitted.append({
+                "id": fid,
+                "name": f["name"],
+                "submitted_at": act["guess_submitted_at"] if act else None
+            })
+        else:
+            pending.append({
+                "id": fid,
+                "name": f["name"]
+            })
+
+    return {
+        "total_active": len(active_families),
+        "active_count": len(active_families),
+        "submitted_count": len(submitted),
+        "pending_count": len(pending),
+        "submitted_families": submitted,
+        "pending_families": pending,
+        "all_submitted": len(pending) == 0,
+        "revealed": is_guesses_revealed(year)
+    }
+
+
+def get_admin_tracking_data(year: int, spoilers_unlocked: bool = False) -> List[Dict[str, Any]]:
+    """Aggregate engagement, address review, and delivery status for each participating family."""
+    db = get_db()
+    active_families = get_all_families(active_only=True)
+    assignments = get_assignments_for_year(year)
+    assignment_map = {a["giver_id"]: a["receiver_name"] for a in assignments}
+
+    activities = get_all_family_activities_for_year(year)
+    reviews = {r["family_id"]: r for r in get_all_address_reviews()}
+
+    # Get latest email status per family
+    email_logs = db.execute(
+        """
+        SELECT family_id, status, error_message, sent_at
+        FROM email_logs
+        WHERE year = ?
+        ORDER BY sent_at DESC
+        """,
+        (year,)
+    ).fetchall()
+    latest_email = {}
+    for log in email_logs:
+        fid = log["family_id"]
+        if fid not in latest_email:
+            latest_email[fid] = log
+
+    # Get wishlist items count and last update per family
+    wishlist_counts = {}
+    wishlist_rows = db.execute(
+        """
+        SELECT family_id, COUNT(*) as cnt, MAX(updated_at) as last_updated
+        FROM wishlist_items
+        GROUP BY family_id
+        """
+    ).fetchall()
+    for w in wishlist_rows:
+        wishlist_counts[w["family_id"]] = (w["cnt"], w["last_updated"])
+
+    # Ballot submission status
+    ballot_voter_ids = set()
+    b_rows = db.execute("SELECT DISTINCT voting_family_id FROM guess_ballots WHERE year = ?", (year,)).fetchall()
+    for b in b_rows:
+        ballot_voter_ids.add(b["voting_family_id"])
+
+    tracking = []
+    for f in active_families:
+        fid = f["id"]
+        act = activities.get(fid)
+        rev = reviews.get(fid)
+
+        # Address review status
+        addr_status = {
+            "is_pending": False,
+            "status": "current",
+            "due_date": "",
+            "admin_note": "",
+            "label": "✓ Current"
+        }
+        if rev:
+            is_pending = (rev["status"] == "pending")
+            addr_status = {
+                "is_pending": is_pending,
+                "status": rev["status"],
+                "due_date": rev["review_due_date"] or "",
+                "admin_note": rev["admin_note"] or "",
+                "label": f"⚠️ Review Due ({rev['review_due_date']})" if is_pending else "✓ Reviewed"
+            }
+
+        # Invitation status
+        email_info = latest_email.get(fid)
+        if not email_info:
+            inv_status = "not_sent"
+            inv_label = "Not sent"
+        elif email_info["status"] in ("success", "sent"):
+            inv_status = "smtp_accepted"
+            inv_label = "SMTP accepted (not delivered)"
+        else:
+            inv_status = "failed"
+            inv_label = f"Failed: {email_info['error_message'] or 'Error'}"
+
+        # Wishlist info
+        w_cnt, w_updated = wishlist_counts.get(fid, (0, None))
+        if act and act["wishlist_updated_at"]:
+            w_updated = act["wishlist_updated_at"]
+
+        # Ballot submission
+        has_submitted = bool((act and act["guess_submitted_at"]) or (fid in ballot_voter_ids))
+        guess_submitted_at = act["guess_submitted_at"] if act else None
+
+        # Recipient name (masked unless spoilers unlocked)
+        raw_receiver = assignment_map.get(fid)
+        if raw_receiver:
+            recipient_display = raw_receiver if spoilers_unlocked else "🔒 Hidden (Spoiler Protection)"
+        else:
+            recipient_display = "—"
+
+        tracking.append({
+            "family_id": fid,
+            "name": f["name"],
+            "family_name": f["name"],
+            "emails": f["emails"],
+            "access_token": f["access_token"],
+            "address_status": addr_status,
+            "address_review_status": addr_status["status"],
+            "invitation_status": inv_status,
+            "invitation_label": inv_label,
+            "last_visit": act["last_visit"] if act else None,
+            "assignment_confirmed_at": act["assignment_confirmed_at"] if act else None,
+            "is_confirmed": bool(act and act["assignment_confirmed_at"]),
+            "wishlist_count": w_cnt,
+            "wishlist_items_count": w_cnt,
+            "wishlist_updated_at": w_updated,
+            "has_submitted_guess": has_submitted,
+            "guess_submitted_at": guess_submitted_at,
+            "recipient_display": recipient_display,
+            "recipient_name": raw_receiver,
+        })
+
+    return tracking
