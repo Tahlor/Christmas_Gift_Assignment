@@ -29,6 +29,18 @@
         </ul>
       </nav>
 
+      <details class="nav-mobile">
+        <summary aria-label="Open navigation">Menu</summary>
+        <div class="nav-mobile-list">
+          <a href="{{ url_for('admin.dashboard') }}">Organizer</a>
+          <a href="{{ url_for('admin.families_list') }}">Families</a>
+          <a href="{{ url_for('admin.history') }}">Past years</a>
+          <form method="POST" action="{{ url_for('admin.admin_logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-secondary btn-sm" type="submit">Log out</button>
+          </form>
+        </div>
+      </details>
       <div class="header-actions">
         <form method="POST" action="{{ url_for('admin.admin_logout') }}" style="display: inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
