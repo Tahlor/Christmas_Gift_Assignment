@@ -3,29 +3,18 @@
 {% block title %}Dashboard - Christmas Gift Exchange{% endblock %}
 
 {% block content %}
-<!-- Top Header & Mode Switch -->
-<div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
-  <div>
-    <h1 style="color: var(--color-primary); font-size: 1.6rem; font-weight: 800; margin-bottom: 4px;">
-      Christmas {{ current_year }} Organizer Dashboard
-    </h1>
-    <p style="color: var(--color-text-muted); font-size: 0.95rem;">
-      Set the rules, try a draw, then prepare, release and track the real exchange.
-    </p>
-  </div>
-  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
-    <!-- Unified Mode Switcher Tabs -->
-    <div class="mode-switch-container">
-      <a href="{{ url_for('admin.dashboard', mode='official') }}" class="mode-tab {{ 'active' if not is_test_mode else '' }}">
-        🛡️ Official Exchange
-      </a>
-      <a href="{{ url_for('admin.dashboard', mode='test') }}" class="mode-tab {{ 'active' if is_test_mode else '' }}">
-        🧪 Test Sandbox
-      </a>
-    </div>
 
-    <div>
-      {% if is_test_mode %}
+<header class="organizer-top">
+  <div>
+    <div class="organizer-eyebrow">CHRISTMAS {{ current_year }} &middot; {{ n }} families</div>
+    <h1>Gift exchange</h1>
+  </div>
+  <nav class="mode-switch-container" aria-label="Choose assignment mode">
+    <a href="{{ url_for('admin.dashboard', mode='test') }}" class="mode-tab {{ 'active' if is_test_mode else '' }}" {% if is_test_mode %}aria-current="page"{% endif %}>Test</a>
+    <a href="{{ url_for('admin.dashboard', mode='official') }}" class="mode-tab {{ 'active' if not is_test_mode else '' }}" {% if not is_test_mode %}aria-current="page"{% endif %}>Official</a>
+  </nav>
+</header>
+{% if is_test_mode %}
       <span class="badge" style="background-color: #fef3c7; color: #92400e; font-size: 0.85rem; padding: 4px 12px; font-weight: 700;">
         🧪 TEST SANDBOX ACTIVE
       </span>
@@ -41,37 +30,15 @@
 </div>
 
 {% if is_test_mode %}
-<!-- ======================================================================= -->
-<!-- TEST SANDBOX MODE VIEW                                                  -->
-<!-- ======================================================================= -->
 
-<div class="card" style="border: 2px dashed var(--color-accent); background-color: #fffaf0; margin-bottom: 24px;">
-  <div style="display: flex; gap: 14px; align-items: flex-start;">
-    <span style="font-size: 1.8rem; line-height: 1;">🧪</span>
-    <div style="flex: 1;">
-      <h2 style="font-size: 1.15rem; font-weight: 800; color: #92400e; margin-bottom: 4px;">
-        Try the rules without making real assignments
-      </h2>
-      <p style="font-size: 0.92rem; color: #78350f; margin-bottom: 8px;">
-        Experiment with rules, seeds, and algorithms without affecting real data.
-        <strong>Guaranteed Safe:</strong> Nothing here writes to production assignments, family settings, or email queues.
-      </p>
-      <div style="font-size: 0.85rem; color: #92400e;">
-        Active Roster: <strong>{{ n }} active families</strong> registered in database.
-      </div>
-    </div>
-    <a href="{{ url_for('admin.dashboard', mode='official') }}" class="btn btn-secondary btn-sm">
-      Exit to Official Mode
-    </a>
-  </div>
-</div>
+<p class="ui-context-note"><strong>Test mode.</strong> Explore sample assignments without changing anything official. Real matches are never displayed here.</p>
 
 <!-- Test Configuration Form -->
 <div class="card" style="margin-bottom: 24px;">
   <div class="card-header">
     <div>
-      <h3 class="card-title">⚙️ Your rules (test mode)</h3>
-      <p class="card-subtitle">Configure rule limits and select algorithms to preview assignments or inspect fairness.</p>
+      <h2 class="card-title">Set the rules</h2>
+      
     </div>
   </div>
 
@@ -117,64 +84,49 @@
       </div>
     </div>
 
-    <!-- Algorithm and Simulation Controls -->
-    <div class="form-row" style="margin-top: 14px;">
-      <div class="form-group">
-        <label for="test_assignment_mode" class="form-label">How should assignments be chosen?</label>
-        <select id="test_assignment_mode" name="assignment_mode" class="form-control">
-          <option value="shuffled_rotation" {{ 'selected' if mode == 'shuffled_rotation' or mode == 'shuffled_repeating_rotation' else '' }}>
-            Shuffled repeating rotation (recommended)
-          </option>
-          <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>
-            Custom fixed rotation
-          </option>
-          <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>
-            Random each year (no coverage guarantee)
-          </option>
-          <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>
-            Legacy cycle shuffle (no sliding guarantee)
-          </option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="test_seed" class="form-label">Test Seed (Fictional)</label>
-        <div style="display: flex; gap: 8px;">
-          <input type="text" id="test_seed" name="test_seed" class="form-control" value="{{ test_sim_data.test_seed if test_sim_data else 'test-sandbox-seed-2026' }}" required>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('test_seed').value='seed-'+Math.floor(Math.random()*90000+10000);">Random</button>
-        </div>
-        <div class="form-hint">Any arbitrary seed can be tested. Does not touch official seed.</div>
+    
+    <div class="ui-method-group">
+      <label for="test_assignment_mode" class="form-label">How should families be matched?</label>
+      <select id="test_assignment_mode" name="assignment_mode" class="form-control" data-method-selector>
+        <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
+        <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Custom fixed rotation</option>
+        <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Random each year</option>
+        <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy shuffled cycles</option>
+      </select>
+      <div class="method-explainer" data-method-explainer aria-live="polite">
+        <p>Shuffle the order once, then repeat it. Everyone gives to everyone within each four-year window.</p>
+        <small><strong>Example:</strong> A gives to B, C, D, E, then B again.</small>
       </div>
     </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label for="test_roster_choice" class="form-label">Test Roster</label>
-        <select id="test_roster_choice" name="roster_choice" class="form-control">
-          <option value="current" {{ 'selected' if not test_sim_data or test_sim_data.roster_choice == 'current' else '' }}>
-            Current Active Roster ({{ n }} families: {{ active_families|map(attribute='name')|join(', ') }})
-          </option>
-          <option value="synthetic_4" {{ 'selected' if test_sim_data and test_sim_data.roster_choice == 'synthetic_4' else '' }}>Synthetic 4 Families (n=4, K≥3)</option>
-          <option value="synthetic_5" {{ 'selected' if test_sim_data and test_sim_data.roster_choice == 'synthetic_5' else '' }}>Synthetic 5 Families (n=5, K≥4)</option>
-          <option value="synthetic_6" {{ 'selected' if test_sim_data and test_sim_data.roster_choice == 'synthetic_6' else '' }}>Synthetic 6 Families (n=6, K≥5)</option>
-          <option value="synthetic_8" {{ 'selected' if test_sim_data and test_sim_data.roster_choice == 'synthetic_8' else '' }}>Synthetic 8 Families (n=8, K≥7)</option>
-        </select>
+    <details class="ui-config-drawer" data-fixed-config hidden>
+      <summary>Customize fixed rotation</summary>
+      <div class="ui-field-grid">
+        <label>Family ID order <input class="form-control" type="text" name="fixed_household_order" value="{{ fixed_household_order or active_families|map(attribute='id')|join(',') }}" placeholder="1,2,3,4,5"></label>
+        <label>Year-by-year shifts <input class="form-control" type="text" name="fixed_offset_order" value="{{ fixed_offset_order or '1,2,3,4' }}" placeholder="1,2,3,4"></label>
       </div>
-
-      <div class="form-group">
-        <label for="test_year" class="form-label">Simulate For Year</label>
-        <input type="number" id="test_year" name="year" class="form-control" value="{{ test_sim_data.year if test_sim_data else current_year }}" min="2020" max="2099">
+      <p class="ui-small-note">Available IDs: {% for f in active_families %}{{ f.id }} = {{ f.name }}{% if not loop.last %}; {% endif %}{% endfor %}. Use each family ID and each shift exactly once.</p>
+    </details>
+    <details class="ui-config-drawer">
+      <summary>Test seed, year and sample families</summary>
+      <div class="ui-field-grid">
+        <label>Test seed <input class="form-control" type="text" name="test_seed" value="{{ test_sim_data.test_seed if test_sim_data else 'try-2026' }}" required></label>
+        <label>Year <input class="form-control" type="number" name="year" value="{{ test_sim_data.year if test_sim_data else current_year }}" min="1900" max="2200"></label>
+        <input type="hidden" name="anchor_year" value="{{ anchor_year }}">
+        <label>Families to test
+          <select class="form-control" name="roster_choice">
+            <option value="current">Current {{ n }} families</option>
+            <option value="synthetic_4">4 example families</option>
+            <option value="synthetic_5">5 example families</option>
+            <option value="synthetic_6">6 example families</option>
+            <option value="synthetic_8">8 example families</option>
+          </select>
+        </label>
       </div>
-    </div>
-
-    <!-- Action Buttons -->
-    <div style="display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap;">
-      <button type="submit" name="sim_type" value="single" class="btn btn-primary">
-        🔍 Run Test Preview (Single Year)
-      </button>
-      <button type="submit" name="sim_type" value="batch_100" class="btn btn-secondary">
-        📊 Inspect Fairness (100 Runs Benchmark)
-      </button>
+      <p class="ui-small-note">This seed is only for examples. It cannot change the official seed.</p>
+    </details>
+    <div class="ui-action-row">
+      <button type="submit" name="sim_type" value="single" class="btn btn-primary">Show example assignments</button>
+      <button type="submit" name="sim_type" value="batch_100" class="btn btn-secondary">Test 100 years</button>
     </div>
   </form>
 </div>
@@ -364,172 +316,39 @@
 </div>
 {% endif %}
 
-<!-- Spoiler Protection Status Banner -->
+
 {% if spoilers_unlocked %}
-<div class="card" style="border-left: 4px solid var(--color-warning); background-color: var(--color-gold-subtle); margin-bottom: 20px;">
-  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <span style="font-size: 1.4rem;">⚠️</span>
-      <div>
-        <strong style="color: #92400e;">Spoiler Protection is UNLOCKED</strong>
-        <p style="font-size: 0.88rem; color: #78350f; margin: 0;">Recipient assignments and guess answers are currently visible in your browser.</p>
-      </div>
-    </div>
-    <form method="POST" action="{{ url_for('admin.lock_spoilers') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn btn-forest btn-sm">🔒 Lock Mappings (Hide Spoilers)</button>
-    </form>
-  </div>
+<div class="ui-alert ui-warning">
+  <span><strong>Pairings visible.</strong> You unlocked the official results.</span>
+  <form method="POST" action="{{ url_for('admin.lock_spoilers') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-secondary btn-sm" type="submit">Hide pairings</button>
+  </form>
 </div>
 {% else %}
-<div class="card" style="border-left: 4px solid var(--color-primary); background-color: #faf9f5; margin-bottom: 20px;">
-  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <span style="font-size: 1.4rem;">🔒</span>
-      <div>
-        <strong style="color: var(--color-primary);">Spoiler Protection is ACTIVE</strong>
-        <p style="font-size: 0.88rem; color: var(--color-text-muted); margin: 0;">Recipient assignments are sealed and masked so the organizer does not spoil who gives to whom.</p>
-      </div>
-    </div>
-    <form method="POST" action="{{ url_for('admin.unlock_spoilers') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn btn-secondary btn-sm" data-confirm="Reveal all recipient pairings for this session? This will spoil who your secret Santa is.">
-        👁️ Unlock Spoilers
-      </button>
-    </form>
-  </div>
-</div>
+<details class="ui-config-drawer ui-privacy-drawer">
+  <summary>🔒 Spoiler Protection is ACTIVE — official pairings are hidden</summary>
+  <p class="ui-small-note">You can manage the exchange without seeing who gives to whom.</p>
+  <form method="POST" action="{{ url_for('admin.unlock_spoilers') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-secondary btn-sm" data-confirm="Reveal all official giver-recipient pairings? This will spoil the surprise.">Show official pairings (spoiler warning)</button>
+  </form>
+</details>
 {% endif %}
-
-<!-- Process Stepper: Configure -> Prepare -> Release -> Invite -> Track -> Reveal -->
-<div class="stepper-container" style="margin-bottom: 20px;">
-  <!-- Step 1: Configure -->
-  <div class="step-item completed">
-    <div class="step-number">✓</div>
-    <span>1. Configure</span>
-  </div>
-  <div class="step-separator">→</div>
-
-  <!-- Step 2: Prepare -->
-  <div class="step-item {{ 'completed' if assignments else 'active' }}">
-    <div class="step-number">{{ '✓' if assignments else '2' }}</div>
-    <span>2. Prepare</span>
-  </div>
-  <div class="step-separator">→</div>
-
-  <!-- Step 3: Release -->
-  <div class="step-item {{ 'completed' if is_published else ('active' if assignments else '') }}">
-    <div class="step-number">{{ '✓' if is_published else '3' }}</div>
-    <span>3. Release</span>
-  </div>
-  <div class="step-separator">→</div>
-
-  <!-- Step 4: Invite -->
-  <div class="step-item {{ 'completed' if (is_published and invited_count == assignments|length and assignments|length > 0) else ('active' if is_published else '') }}">
-    <div class="step-number">{{ '✓' if (is_published and invited_count == assignments|length and assignments|length > 0) else '4' }}</div>
-    <span>4. Invite</span>
-  </div>
-  <div class="step-separator">→</div>
-
-  <!-- Step 5: Track -->
-  <div class="step-item {{ 'completed' if guess_submission_status.all_submitted else ('active' if is_published else '') }}">
-    <div class="step-number">{{ '✓' if guess_submission_status.all_submitted else '5' }}</div>
-    <span>5. Track</span>
-  </div>
-  <div class="step-separator">→</div>
-
-  <!-- Step 6: Reveal -->
-  <div class="step-item {{ 'completed' if is_revealed else ('active' if (is_published and guess_submission_status.all_submitted) else '') }}">
-    <div class="step-number">{{ '✓' if is_revealed else '6' }}</div>
-    <span>6. Reveal</span>
-  </div>
-</div>
-
-<!-- Stat Cards -->
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-label">Active Families</div>
-    <div class="stat-value">{{ n }}</div>
-    <div class="stat-desc">{{ all_families|length }} total families registered</div>
-  </div>
-
-  <div class="stat-card">
-    <div class="stat-label">Cycle Progress</div>
-    <div class="stat-value">Year {{ cycle_info.year_in_cycle }} of {{ cycle_info.cycle_length }}</div>
-    <div class="stat-desc">Cycle: {{ cycle_info.cycle_start_year }}–{{ cycle_info.cycle_end_year }}</div>
-  </div>
-
-  <div class="stat-card">
-    <div class="stat-label">Durable Seed Fingerprint</div>
-    <div class="stat-value" style="font-size: 0.95rem; font-family: monospace; margin-top: 6px;">
-      {{ seed_fingerprint }}
-    </div>
-    <div class="stat-desc">Plaintext secret permanently hidden</div>
-  </div>
-
-  <div class="stat-card">
-    <div class="stat-label">Invitations Sent</div>
-    <div class="stat-value">{{ invited_count }} / {{ assignments|length }}</div>
-    <div class="stat-desc">
-      {% if smtp_available %}SMTP Active{% else %}Manual / Mailto{% endif %}
-    </div>
-  </div>
-</div>
-
-<!-- Mathematical Rules & Feasibility Alert -->
 {% if not feasibility.is_feasible %}
-<div class="card" style="border-left: 4px solid var(--color-danger); background-color: #fef2f2; margin-bottom: 20px;">
-  <div style="display: flex; gap: 12px; align-items: flex-start;">
-    <span style="font-size: 1.5rem; line-height: 1;">🚫</span>
-    <div style="flex: 1;">
-      <h3 style="color: var(--color-danger); font-size: 1.05rem; font-weight: 700; margin-bottom: 4px;">
-        Mathematical Impossibility Flagged (Pigeonhole Constraint)
-      </h3>
-      <p style="font-size: 0.92rem; color: #991b1b; margin-bottom: 8px;">
-        {{ feasibility.message }}
-      </p>
-      <div style="font-size: 0.88rem; color: #7f1d1d;">
-        <strong>Recommended Feasible Parameters for {{ n }} Families:</strong>
-        Set avoid-repeat years to at most <strong>{{ feasibility.suggested_lookback }}</strong> and coverage years to at least <strong>{{ feasibility.suggested_coverage_window }}</strong>.
-      </div>
-    </div>
-  </div>
-</div>
-{% else %}
-<div class="card" style="border-left: 4px solid var(--color-primary); background-color: #faf9f5; margin-bottom: 20px;">
-  <div style="display: flex; gap: 12px; align-items: flex-start;">
-    <span style="font-size: 1.4rem; line-height: 1;">📐</span>
-    <div style="flex: 1;">
-      <h3 style="color: var(--color-primary); font-size: 1.02rem; font-weight: 700; margin-bottom: 4px;">
-        Mathematical Coverage Guarantee Active
-      </h3>
-      <p style="font-size: 0.9rem; color: var(--color-text); margin: 0;">
-        Rule A: Prior {{ no_repeat_years }}-year lookback. Rule B: Sliding {{ coverage_window_k }}-year coverage.
-        {{ cycle_info.explanation }}
-      </p>
-    </div>
-  </div>
+<div class="ui-alert ui-warning" role="alert">
+  <div><strong>These rules cannot both be guaranteed.</strong> {{ feasibility.errors|join(' ') }}<div class="ui-small-note">Suggested: avoid repeats for {{ feasibility.suggested_lookback }} years; cover everyone within {{ feasibility.suggested_coverage_window }} years. You must explicitly approve changes.</div></div>
 </div>
 {% endif %}
-
-<!-- Roster Change Notice if detected -->
 {% if not is_roster_stable %}
-<div class="card" style="border-left: 4px solid var(--color-warning); background-color: var(--color-gold-subtle); margin-bottom: 20px;">
-  <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
-    <div>
-      <h3 style="color: var(--color-warning); font-size: 1.05rem; font-weight: 700; margin-bottom: 4px;">⚠️ Roster Change Detected</h3>
-      <p style="font-size: 0.92rem; color: #78350f;">{{ roster_warning }}</p>
-    </div>
-    <form method="POST" action="{{ url_for('admin.reset_anchor') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn btn-forest btn-sm" data-confirm="Reset cycle anchor to {{ current_year }} for the current active roster? This starts a fresh full-coverage cycle.">
-        Reset Anchor to {{ current_year }}
-      </button>
-    </form>
-  </div>
+<div class="ui-alert ui-warning">
+  <span>{{ roster_warning }}</span>
+  <form method="POST" action="{{ url_for('admin.reset_anchor') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-secondary btn-sm" type="submit" data-confirm="Reset the rotation's starting year?">Reset starting year</button>
+  </form>
 </div>
 {% endif %}
-
 <!-- Lifecycle Action Cards -->
 {% if not is_published and not assignments %}
 <!-- State 1: Unassigned - Prepare Official Assignments -->
@@ -583,40 +402,36 @@
       </div>
     </div>
 
-    <div class="form-row" style="align-items: flex-end; margin-top: 14px;">
-      <div class="form-group" style="margin-bottom: 0; flex: 2;">
-        <label for="prep_assignment_mode" class="form-label">How should assignments be chosen?</label>
-        <select id="prep_assignment_mode" name="assignment_mode" class="form-control">
-          <option value="shuffled_rotation" {{ 'selected' if mode == 'shuffled_rotation' or mode == 'shuffled_repeating_rotation' else '' }}>
-            Shuffled repeating rotation (recommended)
-          </option>
-          <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>
-            Custom fixed rotation
-          </option>
-          <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>
-            Random each year (no coverage guarantee)
-          </option>
-          <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>
-            Legacy cycle shuffle (no sliding guarantee)
-          </option>
-        </select>
-      </div>
 
-      {% if not feasibility.is_feasible %}
-      <div class="form-group" style="margin-bottom: 0; flex: 2;">
-        <label style="font-size: 0.85rem; color: var(--color-danger); display: flex; align-items: center; gap: 6px; cursor: pointer;">
-          <input type="checkbox" name="waiver" value="1">
-          Use the closest possible limits above instead (explicit adjustment)
-        </label>
-      </div>
-      {% endif %}
-
-      <div>
-        <button type="submit" class="btn btn-primary" style="white-space: nowrap;">
-          🔒 Prepare Official Assignments (Sealed Draft)
-        </button>
+    <div class="ui-method-group">
+      <label for="prep_assignment_mode" class="form-label">How should families be matched?</label>
+      <select id="prep_assignment_mode" name="assignment_mode" class="form-control" data-method-selector>
+        <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
+        <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Custom fixed rotation</option>
+        <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Random each year</option>
+        <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy shuffled cycles</option>
+      </select>
+      <div class="method-explainer" data-method-explainer aria-live="polite">
+        <p>Shuffle the order once, then repeat it. Everyone gives to everyone within each four-year window.</p>
+        <small><strong>Example:</strong> A gives to B, C, D, E, then B again.</small>
       </div>
     </div>
+    <details class="ui-config-drawer" data-fixed-config hidden>
+      <summary>Customize fixed rotation</summary>
+      <div class="ui-field-grid">
+        <label>Family ID order <input class="form-control" type="text" name="fixed_household_order" value="{{ fixed_household_order or active_families|map(attribute='id')|join(',') }}" placeholder="1,2,3,4,5"></label>
+        <label>Year-by-year shifts <input class="form-control" type="text" name="fixed_offset_order" value="{{ fixed_offset_order or '1,2,3,4' }}" placeholder="1,2,3,4"></label>
+      </div>
+      <p class="ui-small-note">IDs: {% for f in active_families %}{{ f.id }} = {{ f.name }}{% if not loop.last %}; {% endif %}{% endfor %}. Include each ID and shift once; a custom rotation may change future pairings.</p>
+    </details>
+    {% if not feasibility.is_feasible %}
+    <label class="ui-constraint-optin"><input type="checkbox" name="waiver" value="1"> Use the suggested feasible limits instead of the impossible settings above.</label>
+    {% endif %}
+    <button type="submit" class="btn btn-primary ui-primary-action" data-confirm="Prepare and securely store real assignments? They will remain hidden and no emails will be sent.">Prepare sealed assignments</button>
+  </form>
+</div>
+
+{% elif not is_published and assignments %}
   </form>
 </div>
 
