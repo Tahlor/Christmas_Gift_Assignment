@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}Test Lab - Christmas Gift Exchange{% endblock %}
+
+{% block content %}
+<div class="card-header">
+  <div>
+    <h1 style="color: var(--color-primary); font-size: 1.6rem; font-weight: 800;">🔬 Assignment Test Lab</h1>
+    <p style="color: var(--color-text-muted);">Simulate, benchmark, and stress-test algorithms with synthetic or current rosters. Completely isolated from official data.</p>
+  </div>
+</div>
+
+<!-- Prominent Watermark Notice -->
+<div class="test-watermark">
+  ⚠️ TEST LAB SIMULATION — NOT REAL DATA — NEVER WRITTEN TO PRODUCTION ASSIGNMENTS OR SEED ⚠️
+</div>
+
+<!-- Simulation Configuration Form -->
+<div class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">⚙️ Simulation Parameters</h2>
+      <p class="card-subtitle">Supply arbitrary seeds, custom lookbacks, or synthetic rosters to test fairness and feasibility.</p>
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('admin.test_lab') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="assignment_mode" class="form-label">Algorithm</label>
+        <select id="assignment_mode" name="assignment_mode" class="form-control">
+          <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Randomized Full-Coverage Cycle</option>
+          <option value="predictable_rotation" {{ 'selected' if mode == 'predictable_rotation' else '' }}>Predictable Rotation (Fixed shifts)</option>
+          <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Uniform Random Derangement</option>
+        </select>
+        <div class="form-hint">Mathematical derangement sampler.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="year" class="form-label">Simulation Year</label>
+        <input type="number" id="year" name="year" class="form-control" value="{{ year }}" min="2020" max="2099" required>
+        <div class="form-hint">Target year for test generation.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="anchor_year" class="form-label">Cycle Anchor Year</label>
+        <input type="number" id="anchor_year" name="anchor_year" class="form-control" value="{{ anchor_year }}" min="2020" max="2099" required>
+        <div class="form-hint">Anchor base for rotation modes.</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="test_seed" class="form-label">User-Supplied Test Seed</label>
+        <input type="text" id="test_seed" name="test_seed" class="form-control" value="{{ test_seed }}" required>
+        <div class="form-hint">Arbitrary test seed. Never saved as official production seed.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="roster_choice" class="form-label">Roster Selection</label>
+        <select id="roster_choice" name="roster_choice" class="form-control">
+          <option value="current" {{ 'selected' if roster_choice == 'current' else '' }}>Current Active Families (from DB)</option>
+          <option value="synthetic_4" {{ 'selected' if roster_choice == 'synthetic_4' else '' }}>Synthetic Roster (4 families)</option>
+          <option value="synthetic_5" {{ 'selected' if roster_choice == 'synthetic_5' else '' }}>Synthetic Roster (5 families)</option>
+          <option value="synthetic_6" {{ 'selected' if roster_choice == 'synthetic_6' else '' }}>Synthetic Roster (6 families)</option>
+          <option value="synthetic_8" {{ 'selected' if roster_choice == 'synthetic_8' else '' }}>Synthetic Roster (8 families)</option>
+          <option value="custom" {{ 'selected' if roster_choice == 'custom' else '' }}>Custom Synthetic Size N</option>
+        </select>
+        <div class="form-hint">Synthetic data allows testing arbitrary group sizes.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="custom_n" class="form-label">Custom N (if selected above)</label>
+        <input type="number" id="custom_n" name="custom_n" class="form-control" value="{{ custom_n }}" min="2" max="25">
+      </div>
+    </div>
+
+    <div class="form-row" style="align-items: flex-end;">
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="no_repeat_years" class="form-label">No-Repeat Lookback</label>
+        <input type="number" id="no_repeat_years" name="no_repeat_years" class="form-control" value="{{ lookback }}" min="0">
+        <div class="form-hint">Years to disallow recipient repeats (0 = no repeat restriction).</div>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="sim_type" class="form-label">Simulation Mode</label>
+        <select id="sim_type" name="sim_type" class="form-control">
+          <option value="single" {{ 'selected' if sim_type == 'single' else '' }}>Single Simulation (Inspect Mapping)</option>
+          <option value="batch_100" {{ 'selected' if sim_type == 'batch_100' else '' }}>Batch 100 Simulations (Fairness & Frequency)</option>
+        </select>
+        <div class="form-hint">Single run or 100 Monte Carlo iterations.</div>
+      </div>
+
+      <div>
+        <button type="submit" class="btn btn-forest">Run Test Simulation</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Simulation Results Section -->
+{% if error_message %}
+<div class="alert alert-error">
+  <strong>Simulation Infeasible / Error:</strong> {{ error_message }}
+</div>
+{% endif %}
+
+{% if single_result %}
+<div class="card" style="border: 2px dashed #dc2626;">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title" style="color: #991b1b;">🧪 Single Test Run Output</h2>
+      <p class="card-subtitle">Generated mapping for {{ sim_roster|length }} families using '{{ mode }}'.</p>
+    </div>
+    <span class="badge" style="background-color: #fee2e2; color: #991b1b; font-weight: 700;">TEST — NOT REAL</span>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--color-primary); background-color: #faf9f5; margin-bottom: 16px;">
+    <strong>Cycle Information:</strong> {{ cycle_info.explanation }}
+  </div>
+
+  {% if single_result.conflicts %}
+  <div class="alert alert-warning" style="margin-bottom: 16px;">
+    <strong>⚠️ Constraint Notice:</strong> This rotation cycle produced {{ single_result.conflicts|length }} pairing(s) that conflict with the requested lookback constraint.
+  </div>
+  {% endif %}
+
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Giver Family</th>
+          <th style="width: 40px; text-align: center;">→</th>
+          <th>Recipient Family</th>
+          <th>Lookback Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in single_result.mapping %}
+        <tr>
+          <td style="font-weight: 600;">{{ m.giver_name }}</td>
+          <td style="text-align: center; color: var(--color-accent); font-weight: bold;">🎁</td>
+          <td style="font-weight: 600; color: var(--color-primary);">{{ m.receiver_name }}</td>
+          <td>
+            {% if m.has_conflict %}
+            <span class="badge" style="background-color: #fef3c7; color: #92400e;">Repeats in lookback window</span>
+            {% else %}
+            <span class="badge badge-published">Compliant</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="test-watermark" style="margin-top: 16px;">
+    TEST RUN COMPLETE — NO PRODUCTION DATA MODIFIED
+  </div>
+</div>
+{% endif %}
+
+{% if batch_result %}
+<div class="card" style="border: 2px dashed #dc2626;">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title" style="color: #991b1b;">📊 Batch 100 Simulations Benchmark</h2>
+      <p class="card-subtitle">Evaluated over {{ batch_result.num_runs }} iterations for {{ sim_roster|length }} families.</p>
+    </div>
+    <span class="badge" style="background-color: #fee2e2; color: #991b1b; font-weight: 700;">TEST — NOT REAL</span>
+  </div>
+
+  <!-- Summary Stats Grid -->
+  <div class="stats-grid" style="margin-bottom: 20px;">
+    <div class="stat-card">
+      <div class="stat-label">Successful Runs</div>
+      <div class="stat-value">{{ batch_result.successful_runs }} / {{ batch_result.num_runs }}</div>
+      <div class="stat-desc">Feasible iterations</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-label">Infeasible Runs</div>
+      <div class="stat-value">{{ batch_result.infeasible_runs }}</div>
+      <div class="stat-desc">Constraint violations</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-label">Frequency Spread</div>
+      <div class="stat-value">{{ batch_result.min_freq }} – {{ batch_result.max_freq }}</div>
+      <div class="stat-desc">Min / Max times any pair occurred</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-label">Average Frequency</div>
+      <div class="stat-value">{{ batch_result.avg_freq }}</div>
+      <div class="stat-desc">Expected pair occurrences</div>
+    </div>
+  </div>
+
+  <!-- Pair Distribution Matrix -->
+  <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--color-primary); margin-bottom: 8px;">Pairing Frequency Matrix (Giver → Receiver Counts)</h3>
+  <div class="table-responsive">
+    <table class="table" style="font-size: 0.88rem;">
+      <thead>
+        <tr>
+          <th>Giver \ Receiver</th>
+          {% for r in sim_roster %}
+          <th style="text-align: center;">{{ r.name }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in sim_roster %}
+        <tr>
+          <td style="font-weight: 600;">{{ g.name }}</td>
+          {% for r in sim_roster %}
+          <td style="text-align: center;">
+            {% if g.id == r.id %}
+              <span style="color: var(--color-text-muted); font-style: italic;">—</span>
+            {% else %}
+              {% set count = batch_result.giver_counts[g.id][r.id] if (g.id in batch_result.giver_counts and r.id in batch_result.giver_counts[g.id]) else 0 %}
+              <strong style="color: {% if count > 0 %}var(--color-primary){% else %}var(--color-text-muted){% endif %};">{{ count }}</strong>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="test-watermark" style="margin-top: 16px;">
+    BATCH BENCHMARK COMPLETE — NO PRODUCTION DATA MODIFIED
+  </div>
+</div>
+{% endif %}
+{% endblock %}

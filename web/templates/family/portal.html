@@ -153,4 +153,167 @@
   Your secret giver is kept completely secret — you will never see who is giving to you.
   Only the secret family assigned to give to you will be able to see your wish list and mailing address.
 </div>
+
+<!-- Guess-the-Giver Game (Optional after Release) -->
+{% if published and active_families %}
+  {% if not show_game %}
+  <div class="card" style="margin-top: 24px; border: 1px dashed var(--color-border); background-color: #faf9f5;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--color-primary); margin: 0 0 4px;">🎉 Guess Who Gave to Whom!</h3>
+        <p style="font-size: 0.88rem; color: var(--color-text-muted); margin: 0;">Optional family game: guess everyone's secret Santa and see who gets the highest score!</p>
+      </div>
+      <a href="{{ url_for('family.portal', token=token, game=1) }}" class="btn btn-secondary btn-sm">Open Guessing Game</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="margin-top: 24px; border: 1px solid var(--color-border);">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">🎉 Guess Who Gave to Whom! (Optional Game)</h2>
+        <p class="card-subtitle">
+          {% if not guesses_revealed %}
+          Can you figure out everyone's secret Santa? Submit your guesses below and update them anytime before gifts are opened!
+          {% else %}
+          The answers have been revealed! Check out how your family scored below.
+          {% endif %}
+        </p>
+      </div>
+      <div>
+        {% if guesses_revealed %}
+        <span class="badge badge-published">✓ Answers Revealed</span>
+        {% else %}
+        <span class="badge badge-draft">Ballots Open</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if not guesses_revealed %}
+    <!-- Ballot Submission Form -->
+    <form method="POST" action="{{ url_for('family.submit_guesses', token=token) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Receiving Family</th>
+              <th>Your Guess: Who Gave to Them?</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in active_families %}
+            <tr>
+              <td style="font-weight: 600; vertical-align: middle;">
+                {{ r.name }}
+                {% if r.id == family.id %}
+                <span style="font-size: 0.8rem; color: var(--color-text-muted); font-weight: normal;">(Your Family)</span>
+                {% endif %}
+              </td>
+              <td>
+                <select name="guess_{{ r.id }}" class="form-control form-control-sm" style="max-width: 260px;">
+                  <option value="">— Not sure / Abstain —</option>
+                  {% for g in active_families %}
+                  <option value="{{ g.id }}" {{ 'selected' if existing_guesses.get(r.id) == g.id else '' }}>
+                    {{ g.name }}
+                  </option>
+                  {% endfor %}
+                </select>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary">Save Your Guesses</button>
+      </div>
+    </form>
+
+    {% else %}
+    <!-- Game Results & Scoreboard -->
+    {% if game_results %}
+    <div style="margin-bottom: 20px;">
+      {% set ns = namespace(found=false, my_entry=none) %}
+      {% for entry in game_results.leaderboard %}
+        {% if entry.family_id == family.id %}
+          {% set ns.found = true %}
+          {% set ns.my_entry = entry %}
+        {% endif %}
+      {% endfor %}
+
+      {% if ns.found %}
+      <div class="alert alert-success" style="margin-bottom: 20px;">
+        <h3 style="margin: 0 0 4px; font-size: 1.1rem;">
+          🎯 Your Family's Score: {{ ns.my_entry.correct_count }} of {{ ns.my_entry.total_receivers }} Correct ({{ ns.my_entry.score_pct }}%)
+        </h3>
+        <p style="margin: 0; font-size: 0.9rem;">Here is how your guesses compared with the actual secret assignments:</p>
+      </div>
+
+      <div class="table-responsive" style="margin-bottom: 24px;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Receiving Family</th>
+              <th>Actual Giver</th>
+              <th>Your Guess</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in ns.my_entry.breakdown %}
+            <tr>
+              <td style="font-weight: 600;">{{ item.receiver_name }}</td>
+              <td style="color: var(--color-primary); font-weight: 600;">{{ item.actual_giver_name }}</td>
+              <td>{{ item.guessed_giver_name }}</td>
+              <td>
+                {% if item.is_correct %}
+                <span class="badge badge-published">✓ Correct</span>
+                {% elif item.guessed_giver_name == 'Not sure' %}
+                <span class="badge badge-inactive">Abstained</span>
+                {% else %}
+                <span class="badge" style="background-color: #fee2e2; color: #991b1b;">✗ Incorrect</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      <!-- Overall Scoreboard -->
+      <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--color-primary); margin-bottom: 8px;">🏆 Family Leaderboard</h3>
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Family</th>
+              <th>Correct Guesses</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in game_results.leaderboard %}
+            <tr {% if entry.family_id == family.id %}style="background-color: #fefce8; font-weight: 600;"{% endif %}>
+              <td style="font-weight: 700;">#{{ loop.index }}</td>
+              <td>
+                {{ entry.family_name }}
+                {% if entry.family_id == family.id %}<span class="badge badge-published" style="margin-left: 6px;">You</span>{% endif %}
+              </td>
+              <td>{{ entry.correct_count }} / {{ entry.total_receivers }}</td>
+              <td>{{ entry.score_pct }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+{% endif %}
 {% endblock %}

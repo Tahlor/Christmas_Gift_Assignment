@@ -10,12 +10,49 @@
   </div>
   <div>
     {% if is_published %}
-    <span class="badge badge-published" style="font-size: 0.9rem; padding: 6px 14px;">✓ Assignments Published</span>
+    <span class="badge badge-published" style="font-size: 0.9rem; padding: 6px 14px;">✓ Assignments Released</span>
+    {% elif assignments %}
+    <span class="badge badge-draft" style="font-size: 0.9rem; padding: 6px 14px;">🔒 Sealed Draft (Unpublished)</span>
     {% else %}
-    <span class="badge badge-draft" style="font-size: 0.9rem; padding: 6px 14px;">Draft (Unpublished)</span>
+    <span class="badge badge-inactive" style="font-size: 0.9rem; padding: 6px 14px;">Unassigned</span>
     {% endif %}
   </div>
 </div>
+
+<!-- Spoiler Protection Status Banner -->
+{% if spoilers_unlocked %}
+<div class="card" style="border-left: 4px solid var(--color-warning); background-color: var(--color-gold-subtle); margin-bottom: 20px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font-size: 1.4rem;">⚠️</span>
+      <div>
+        <strong style="color: #92400e;">Spoiler Protection is UNLOCKED</strong>
+        <p style="font-size: 0.88rem; color: #78350f; margin: 0;">Recipient assignments are currently visible for this browser session.</p>
+      </div>
+    </div>
+    <form method="POST" action="{{ url_for('admin.lock_spoilers') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-forest btn-sm">Lock Mappings (Hide Spoilers)</button>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="card" style="border-left: 4px solid var(--color-primary); background-color: #faf9f5; margin-bottom: 20px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font-size: 1.4rem;">🔒</span>
+      <div>
+        <strong style="color: var(--color-primary);">Spoiler Protection is ACTIVE</strong>
+        <p style="font-size: 0.88rem; color: var(--color-text-muted); margin: 0;">Recipient assignments are masked by default so the organizer does not spoil their own secret Santa.</p>
+      </div>
+    </div>
+    <form method="POST" action="{{ url_for('admin.unlock_spoilers') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-secondary btn-sm" data-confirm="Reveal all recipient pairings for this session? This will spoil who your secret Santa is.">Unlock Spoilers</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <!-- Stat Cards -->
 <div class="stats-grid">
@@ -84,7 +121,7 @@
 </div>
 {% endif %}
 
-<!-- Pending Preview Section -->
+<!-- Pending Preview Section (if generated) -->
 {% if preview_assignments %}
 <div class="card" style="border: 2px solid var(--color-primary);">
   <div class="card-header">
@@ -118,11 +155,95 @@
         <tr>
           <td style="font-weight: 600;">{{ p.giver_name }}</td>
           <td style="text-align: center; color: var(--color-accent); font-weight: bold;">🎁</td>
-          <td style="font-weight: 600; color: var(--color-primary);">{{ p.receiver_name }}</td>
+          <td style="font-weight: 600;">
+            {% if spoilers_unlocked %}
+              <span style="color: var(--color-primary);">{{ p.receiver_name }}</span>
+            {% else %}
+              <span class="spoiler-masked" title="Unlock spoilers to view">🔒 Hidden (Spoiler Protection)</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Lifecycle Action Cards -->
+{% if not is_published and not assignments %}
+<!-- State 1: Unassigned - Prepare Official Assignments -->
+<div class="card" style="border: 1px solid var(--color-primary);">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">🎁 Prepare Official Assignments</h2>
+      <p class="card-subtitle">Generate official sealed draft assignments for Christmas {{ current_year }}. Families will see nothing until you explicitly release them.</p>
+    </div>
+  </div>
+  <form method="POST" action="{{ url_for('admin.prepare_assignments') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row" style="align-items: flex-end;">
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="prep_assignment_mode" class="form-label">Algorithm</label>
+        <select id="prep_assignment_mode" name="assignment_mode" class="form-control">
+          <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Randomized Full-Coverage Cycle (Guaranteed n-1)</option>
+          <option value="predictable_rotation" {{ 'selected' if mode == 'predictable_rotation' else '' }}>Predictable Rotation (Fixed shifts)</option>
+          <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Uniform Random Derangement (Rejection sampler)</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="prep_no_repeat_years" class="form-label">No-Repeat Lookback</label>
+        <input type="number" id="prep_no_repeat_years" name="no_repeat_years" class="form-control" value="{{ no_repeat_years }}" min="0">
+        <div class="form-hint">Years to disallow recipient repeats (0 = allow any).</div>
+      </div>
+
+      <div>
+        <button type="submit" class="btn btn-primary">Prepare Official Assignments</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% elif not is_published and assignments %}
+<!-- State 2: Sealed Draft -->
+<div class="card" style="border: 2px solid var(--color-primary); background-color: #faf9f5;">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title" style="color: var(--color-primary);">🔒 Official Assignments: Sealed Draft</h2>
+      <p class="card-subtitle">Assignments for {{ current_year }} have been prepared and sealed in the database. Families cannot see them until you release.</p>
+    </div>
+    <div class="btn-group">
+      <form method="POST" action="{{ url_for('admin.release_assignments') }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary" data-confirm="Release assignments to families? This makes assignments visible on all family portals and cannot be undone or reshuffled.">Release to Families</button>
+      </form>
+      <form method="POST" action="{{ url_for('admin.discard_draft') }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary" data-confirm="Discard these draft assignments? You will need to prepare them again before releasing.">Discard Sealed Draft</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- State 3: Released -->
+<div class="card" style="border-left: 4px solid var(--color-forest); background-color: #f4fbf7;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+    <div>
+      <h2 style="color: var(--color-forest); font-size: 1.15rem; font-weight: 700; margin-bottom: 4px;">✓ Assignments Released to Families</h2>
+      <p style="font-size: 0.92rem; color: #166534; margin: 0;">
+        Assignments for Christmas {{ current_year }} are active and locked. Families can view their secret recipient via their private link.
+      </p>
+    </div>
+    <div>
+      {% if smtp_available %}
+      <form method="POST" action="{{ url_for('admin.send_emails') }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-forest" data-confirm="Send invitation emails to all families via SMTP? Each family will receive their private link.">Send All Invitations via SMTP</button>
+      </form>
+      {% endif %}
+    </div>
   </div>
 </div>
 {% endif %}
@@ -134,6 +255,8 @@
       <h2 class="card-title">
         {% if is_published %}
         🎄 Published Assignments for {{ current_year }}
+        {% elif assignments %}
+        🔒 Sealed Draft Assignments for {{ current_year }}
         {% else %}
         📝 Assignments for {{ current_year }}
         {% endif %}
@@ -148,57 +271,7 @@
         {% endif %}
       </p>
     </div>
-
-    <div class="btn-group">
-      {% if not is_published %}
-        {% if assignments %}
-        <form method="POST" action="{{ url_for('admin.publish') }}" style="display: inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-primary" data-confirm="Publish assignments for Christmas {{ current_year }}? Once published, assignments become immutable and visible to families.">Publish Assignments</button>
-        </form>
-        {% endif %}
-      {% else %}
-        {% if smtp_available %}
-        <form method="POST" action="{{ url_for('admin.send_emails') }}" style="display: inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-forest" data-confirm="Send invitation emails to all families via SMTP? Each family will receive their private link.">Send All Invitations via SMTP</button>
-        </form>
-        {% endif %}
-      {% endif %}
-    </div>
   </div>
-
-  <!-- Generate Preview Form (when in Draft) -->
-  {% if not is_published %}
-  <div style="background-color: #faf9f5; padding: 16px; border-radius: var(--radius-md); margin-bottom: 20px; border: 1px solid var(--color-border);">
-    <form method="POST" action="{{ url_for('admin.preview_assignments') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="form-row" style="align-items: flex-end;">
-        <div class="form-group" style="margin-bottom: 0;">
-          <label for="assignment_mode" class="form-label">Select Algorithm Mode</label>
-          <select id="assignment_mode" name="assignment_mode" class="form-control">
-            <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Randomized Full-Coverage Cycle (Guaranteed n-1)</option>
-            <option value="predictable_rotation" {{ 'selected' if mode == 'predictable_rotation' else '' }}>Predictable Rotation (Fixed cyclic shifts)</option>
-            <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Uniform Random Derangement (Rejection sampler)</option>
-          </select>
-        </div>
-
-        <div class="form-group" style="margin-bottom: 0;">
-          <label for="no_repeat_years" class="form-label">No-Repeat History (for Uniform)</label>
-          <select id="no_repeat_years" name="no_repeat_years" class="form-control">
-            <option value="1" {{ 'selected' if no_repeat_years == 1 else '' }}>Disallow last year (1 year)</option>
-            <option value="2" {{ 'selected' if no_repeat_years == 2 else '' }}>Disallow last 2 years (2 years)</option>
-            <option value="0" {{ 'selected' if no_repeat_years == 0 else '' }}>Allow any derangement (0 years)</option>
-          </select>
-        </div>
-
-        <div>
-          <button type="submit" class="btn btn-forest">Generate / Preview</button>
-        </div>
-      </div>
-    </form>
-  </div>
-  {% endif %}
 
   <!-- Assignments Table -->
   {% if assignments %}
@@ -224,8 +297,12 @@
             {% endif %}
           </td>
           <td style="text-align: center; color: var(--color-accent);">🎁</td>
-          <td style="font-weight: 600; color: var(--color-primary);">
-            {{ a.receiver_name }}
+          <td style="font-weight: 600;">
+            {% if spoilers_unlocked %}
+              <span style="color: var(--color-primary);">{{ a.receiver_name }}</span>
+            {% else %}
+              <span class="spoiler-masked" title="Unlock spoilers to view">🔒 Hidden</span>
+            {% endif %}
           </td>
           <td>
             <div style="display: flex; align-items: center; gap: 6px;">
@@ -258,7 +335,9 @@
           <td style="text-align: right;">
             <div class="btn-group" style="justify-content: flex-end;">
               <a href="{{ mailto_links[a.giver_id] }}" class="btn btn-secondary btn-sm" title="Open Mailto in Email Client">✉️ Mailto</a>
+              {% if spoilers_unlocked %}
               <a href="{{ portal_links[a.giver_id] }}" target="_blank" class="btn btn-outline btn-sm" title="Preview Family View">View</a>
+              {% endif %}
             </div>
           </td>
         </tr>
@@ -276,14 +355,72 @@
     <div class="empty-state-icon">🎁</div>
     <h3 style="color: var(--color-primary); margin-bottom: 6px;">No Assignments for {{ current_year }}</h3>
     <p style="color: var(--color-text-muted); max-width: 480px; margin: 0 auto 16px;">
-      Use the algorithm tool above to generate a preview. You can preview, review, and save as draft before publishing.
+      Use the algorithm tool above to prepare official assignments, or visit the Test Lab to simulate different settings.
     </p>
   </div>
   {% endif %}
 </div>
 
+<!-- Guess-The-Giver Game Admin Section (if published) -->
+{% if is_published %}
+<div class="card" style="margin-top: 24px;">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">🎉 Family Guess-the-Giver Game</h2>
+      <p class="card-subtitle">
+        Participation: {{ guess_stats.voted_count }} of {{ guess_stats.total_active }} families have submitted ballots.
+      </p>
+    </div>
+    <div>
+      {% if not guess_stats.revealed %}
+      <form method="POST" action="{{ url_for('admin.reveal_game') }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-forest btn-sm" data-confirm="Reveal guessing game answers to all families? This locks all ballots and computes official scores. This action cannot be undone.">Reveal Answers & Lock Ballots</button>
+      </form>
+      {% else %}
+      <span class="badge badge-published">✓ Answers Revealed & Ballots Locked</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if guess_stats.revealed and game_scores %}
+  <div style="margin-top: 16px;">
+    <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--color-primary); margin-bottom: 8px;">🏆 Family Scoreboard</h3>
+    {% if game_scores.leaderboard %}
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Family</th>
+            <th>Correct Guesses</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in game_scores.leaderboard %}
+          <tr>
+            <td style="font-weight: 700;">#{{ loop.index }}</td>
+            <td style="font-weight: 600;">{{ entry.family_name }}</td>
+            <td>{{ entry.correct_count }} / {{ entry.total_receivers }}</td>
+            <td>
+              <span class="badge badge-published" style="font-size: 0.85rem;">{{ entry.score_pct }}%</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p style="color: var(--color-text-muted); font-style: italic;">No families submitted guesses before the reveal.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 <!-- Advanced Settings Collapsible Drawer -->
-<details class="settings-drawer">
+<details class="settings-drawer" style="margin-top: 24px;">
   <summary>⚙️ Advanced System Settings</summary>
   <div class="drawer-body">
     <form method="POST" action="{{ url_for('admin.update_settings') }}">
@@ -312,11 +449,8 @@
 
         <div class="form-group">
           <label for="no_repeat_years_setting" class="form-label">No-Repeat Lookback</label>
-          <select id="no_repeat_years_setting" name="no_repeat_years" class="form-control">
-            <option value="1" {{ 'selected' if no_repeat_years == 1 else '' }}>1 year lookback</option>
-            <option value="2" {{ 'selected' if no_repeat_years == 2 else '' }}>2 years lookback</option>
-            <option value="0" {{ 'selected' if no_repeat_years == 0 else '' }}>No lookback (0)</option>
-          </select>
+          <input type="number" id="no_repeat_years_setting" name="no_repeat_years" class="form-control" value="{{ no_repeat_years }}" min="0">
+          <div class="form-hint">Number of previous years to disallow repeats (0-1000).</div>
         </div>
       </div>
 
@@ -324,6 +458,46 @@
         <button type="submit" class="btn btn-forest">Save Settings</button>
       </div>
     </form>
+
+    <!-- Durable Production Seed Section -->
+    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--color-border);">
+      <h3 style="font-size: 1rem; font-weight: 700; color: var(--color-primary); margin-bottom: 6px;">🔑 Production Cycle Seed</h3>
+      <p style="font-size: 0.88rem; color: var(--color-text-muted); margin-bottom: 12px;">
+        Exactly one durable seed powers the official randomized coverage cycle. To maintain secrecy, plaintext is never displayed.
+      </p>
+
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+        <span style="font-size: 0.9rem; font-weight: 600;">Current Fingerprint:</span>
+        <code style="background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem;">{{ seed_fingerprint }}</code>
+        {% if has_published %}
+        <span class="badge badge-published" title="Locked because published years exist">🔒 Seed Locked</span>
+        {% else %}
+        <span class="badge badge-draft">Editable (No published years)</span>
+        {% endif %}
+      </div>
+
+      {% if not has_published %}
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+        <form method="POST" action="{{ url_for('admin.update_seed') }}" style="display: flex; gap: 8px; align-items: flex-end;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div>
+            <label class="form-label" style="font-size: 0.85rem;">Set Custom Seed</label>
+            <input type="password" name="production_seed" class="form-control form-control-sm" placeholder="Enter new secret" required style="width: 200px;">
+          </div>
+          <button type="submit" class="btn btn-secondary btn-sm" data-confirm="Replace the production cycle seed?">Set Seed</button>
+        </form>
+
+        <form method="POST" action="{{ url_for('admin.regenerate_seed') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-outline btn-sm" data-confirm="Generate a fresh cryptographic seed?">Generate Random Seed</button>
+        </form>
+      </div>
+      {% else %}
+      <p style="font-size: 0.85rem; color: var(--color-text-muted); font-style: italic;">
+        Seed cannot be changed because official assignments have already been published.
+      </p>
+      {% endif %}
+    </div>
   </div>
 </details>
 {% endblock %}

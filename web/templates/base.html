@@ -18,7 +18,10 @@
       <nav aria-label="Main Navigation">
         <ul class="nav-links">
           <li>
-            <a href="{{ url_for('admin.dashboard') }}" class="nav-link {{ 'active' if active_tab == 'dashboard' else '' }}">Dashboard</a>
+            <a href="{{ url_for('admin.dashboard') }}" class="nav-link {{ 'active' if active_tab == 'dashboard' else '' }}">Overview</a>
+          </li>
+          <li>
+            <a href="{{ url_for('admin.test_lab') }}" class="nav-link {{ 'active' if active_tab == 'test_lab' else '' }}">Test Lab</a>
           </li>
           <li>
             <a href="{{ url_for('admin.families_list') }}" class="nav-link {{ 'active' if active_tab == 'families' else '' }}">Families</a>

@@ -121,3 +121,10 @@ python3 -m web.app --host 127.0.0.1 --port 13046
 7. [ ] Log in to Admin Dashboard at `https://taylorarchibald.com/christmas/admin/login`.
 8. [ ] Import or enter families via CSV or manual entry.
 9. [ ] Generate, review, save, and publish assignments.
+
+
+## V2: safe testing, sealed assignments, and historical voting
+
+The 2026 V2 adds a separate Test Lab (independent seed and no writes), a single stored production seed, unlimited nonnegative historical lookback, manual-year history import, spoiler-protected organizer views and exports, sealed assignment preparation and separate family release/send actions, and a private family guessing game with organizer-controlled answer reveal.
+
+See [V2_DESIGN.md](../V2_DESIGN.md) for the full UX proposal, mathematical guarantees, migration notes, and historical evidence status. Live family contact information, private links, and actual assignment records remain outside the repository.

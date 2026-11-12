@@ -325,3 +325,159 @@ def analyze_history_coverage(
         "family_stats": stats_per_family,
         "pair_history": pair_history
     }
+
+
+def validate_mapping_against_history(
+    mapping: Dict[int, int],
+    history_disallowed: Optional[Dict[int, Set[int]]]
+) -> List[Tuple[int, int]]:
+    """Check if any pairing in mapping violates historical disallowed constraints.
+
+    Returns list of conflicting pairs [(giver_id, receiver_id), ...].
+    """
+    if not history_disallowed:
+        return []
+    conflicts = []
+    for giver, receiver in mapping.items():
+        if receiver in history_disallowed.get(giver, set()):
+            conflicts.append((giver, receiver))
+    return conflicts
+
+
+def generate_synthetic_roster(size: int = 5) -> List[Dict[str, object]]:
+    """Generate sample synthetic families for test lab simulations."""
+    if size < 2:
+        size = 2
+    names = [
+        "Alpine", "Balsam", "Cedar", "Douglas", "Evergreen",
+        "Frost", "Garland", "Holly", "Ivy", "Jingle",
+        "Kringle", "Larkspur", "Mistletoe", "Nutcracker", "Oak",
+        "Poinsettia", "Quilted", "Rudolph", "Snowflake", "Tinsel"
+    ]
+    roster = []
+    for idx in range(size):
+        family_name = f"Family {names[idx % len(names)]}" if idx < len(names) else f"Family #{idx + 1}"
+        roster.append({
+            "id": idx + 1,
+            "name": family_name,
+            "emails": f"test_{idx + 1}@example.test",
+            "active": 1
+        })
+    return roster
+
+
+def simulate_assignment(
+    family_ids: List[int],
+    mode: str,
+    year: int,
+    anchor_year: int,
+    seed: str,
+    history_disallowed: Optional[Dict[int, Set[int]]] = None
+) -> Dict[int, int]:
+    """Pure in-memory simulation of an assignment for the test lab.
+
+    Guaranteed never to write to database or production settings.
+    """
+    if len(family_ids) < 2:
+        raise AssignmentError("At least 2 active families are required for test simulation.")
+
+    if mode == "predictable_rotation":
+        mapping = predictable_rotation(family_ids, year, anchor_year)
+    elif mode == "randomized_cycle":
+        mapping = randomized_coverage_cycle(family_ids, year, anchor_year, seed)
+    elif mode == "uniform_random":
+        rng = None
+        if seed:
+            seed_hash = hashlib.sha256(f"test_sim:{seed}:{year}".encode("utf-8")).digest()
+            rng_seed = int.from_bytes(seed_hash[:8], byteorder="big")
+            rng = random.Random(rng_seed)
+        mapping = uniform_random_derangement(family_ids, history=history_disallowed, rng=rng)
+    else:
+        raise AssignmentError(f"Unknown assignment mode: {mode}")
+
+    return mapping
+
+
+def batch_simulate_assignments(
+    family_ids: List[int],
+    mode: str,
+    start_year: int,
+    anchor_year: int,
+    seed: str,
+    lookback_years: int = 1,
+    num_runs: int = 100
+) -> Dict[str, object]:
+    """Run batch Monte Carlo simulations (e.g. 100 runs) for the test lab.
+
+    Simulates a sequence of consecutive years starting from start_year,
+    tracking repeat occurrences, distribution matrix, and fairness metrics.
+    """
+    n = len(family_ids)
+    if n < 2:
+        raise AssignmentError("At least 2 families required for batch simulation.")
+
+    num_runs = max(1, min(num_runs, 500))
+    pair_counts: Dict[Tuple[int, int], int] = {}
+    giver_counts: Dict[int, Dict[int, int]] = {g: {r: 0 for r in family_ids if r != g} for g in family_ids}
+    successful_runs = 0
+    infeasible_runs = 0
+    sim_history_by_year: Dict[int, Dict[int, int]] = {}
+
+    master_seed_int = int.from_bytes(hashlib.sha256(seed.encode("utf-8")).digest()[:8], "big") if seed else random.randrange(10**9)
+
+    for run_idx in range(num_runs):
+        sim_year = start_year + run_idx
+        # Build disallowed history from recent simulated years
+        disallowed: Dict[int, Set[int]] = {g: set() for g in family_ids}
+        if lookback_years > 0:
+            for past_yr in range(max(start_year, sim_year - lookback_years), sim_year):
+                if past_yr in sim_history_by_year:
+                    for g, r in sim_history_by_year[past_yr].items():
+                        if g in disallowed:
+                            disallowed[g].add(r)
+
+        try:
+            if mode == "predictable_rotation":
+                mapping = predictable_rotation(family_ids, sim_year, anchor_year)
+                # Check for history conflict
+                conflicts = validate_mapping_against_history(mapping, disallowed)
+                if conflicts and lookback_years > 0 and run_idx > 0:
+                    infeasible_runs += 1
+                    continue
+            elif mode == "randomized_cycle":
+                mapping = randomized_coverage_cycle(family_ids, sim_year, anchor_year, seed)
+                conflicts = validate_mapping_against_history(mapping, disallowed)
+                if conflicts and lookback_years > 0 and run_idx > 0:
+                    infeasible_runs += 1
+                    continue
+            elif mode == "uniform_random":
+                rng = random.Random(master_seed_int + run_idx)
+                mapping = uniform_random_derangement(family_ids, history=disallowed, rng=rng)
+            else:
+                mapping = {}
+
+            successful_runs += 1
+            sim_history_by_year[sim_year] = mapping
+            for g, r in mapping.items():
+                pair_counts[(g, r)] = pair_counts.get((g, r), 0) + 1
+                if g in giver_counts and r in giver_counts[g]:
+                    giver_counts[g][r] += 1
+        except (AssignmentError, AssignmentInfeasibleError):
+            infeasible_runs += 1
+
+    all_frequencies = [count for count in pair_counts.values()]
+    min_freq = min(all_frequencies) if all_frequencies else 0
+    max_freq = max(all_frequencies) if all_frequencies else 0
+    avg_freq = round(sum(all_frequencies) / (n * (n - 1)), 2) if n > 1 else 0
+
+    return {
+        "num_runs": num_runs,
+        "successful_runs": successful_runs,
+        "infeasible_runs": infeasible_runs,
+        "pair_counts": {f"{g}->{r}": count for (g, r), count in pair_counts.items()},
+        "giver_counts": giver_counts,
+        "min_freq": min_freq,
+        "max_freq": max_freq,
+        "avg_freq": avg_freq,
+        "family_ids": family_ids
+    }

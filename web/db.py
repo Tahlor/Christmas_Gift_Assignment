@@ -94,8 +94,37 @@ CREATE TABLE IF NOT EXISTS assignments (
     published INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     published_at TEXT,
+    provenance TEXT NOT NULL DEFAULT 'official',
+    confidence TEXT NOT NULL DEFAULT 'confirmed',
     UNIQUE(year, giver_family_id),
     UNIQUE(year, receiver_family_id)
+);
+
+CREATE TABLE IF NOT EXISTS family_import_sources (
+    family_id INTEGER PRIMARY KEY REFERENCES families(id) ON DELETE CASCADE,
+    source_sheet_id TEXT NOT NULL,
+    source_family_id TEXT NOT NULL UNIQUE,
+    imported_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS historical_years (
+    year INTEGER PRIMARY KEY,
+    provenance TEXT NOT NULL DEFAULT 'manual',
+    confidence TEXT NOT NULL DEFAULT 'confirmed',
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS guess_ballots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    year INTEGER NOT NULL,
+    voting_family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    receiving_family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    guessed_giver_family_id INTEGER REFERENCES families(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(year, voting_family_id, receiving_family_id)
 );
 
 CREATE TABLE IF NOT EXISTS email_logs (
@@ -119,7 +148,19 @@ CREATE INDEX IF NOT EXISTS idx_assignments_year ON assignments(year);
 CREATE INDEX IF NOT EXISTS idx_families_token ON families(access_token);
 CREATE INDEX IF NOT EXISTS idx_wishlist_family ON wishlist_items(family_id);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip_address, attempt_time);
+CREATE INDEX IF NOT EXISTS idx_guess_ballots_year ON guess_ballots(year, voting_family_id);
 """
+
+
+def run_migrations(conn: sqlite3.Connection):
+    """Apply non-destructive schema migrations to existing database."""
+    # Ensure assignments table has provenance and confidence columns
+    cur = conn.execute("PRAGMA table_info(assignments);")
+    cols = {row["name"] for row in cur.fetchall()}
+    if "provenance" not in cols:
+        conn.execute("ALTER TABLE assignments ADD COLUMN provenance TEXT NOT NULL DEFAULT 'official';")
+    if "confidence" not in cols:
+        conn.execute("ALTER TABLE assignments ADD COLUMN confidence TEXT NOT NULL DEFAULT 'confirmed';")
 
 
 def init_db(db_path: str):
@@ -127,6 +168,7 @@ def init_db(db_path: str):
     conn = connect_db(db_path)
     with conn:
         conn.executescript(SCHEMA_SQL)
+        run_migrations(conn)
 
         # Default settings initialization
         current_year = str(datetime.now().year)
