@@ -15,24 +15,7 @@
   </nav>
 </header>
 {% if is_test_mode %}
-      <span class="badge" style="background-color: #fef3c7; color: #92400e; font-size: 0.85rem; padding: 4px 12px; font-weight: 700;">
-        🧪 TEST SANDBOX ACTIVE
-      </span>
-      {% elif is_published %}
-      <span class="badge badge-published" style="font-size: 0.85rem; padding: 4px 12px;">✓ Assignments Released</span>
-      {% elif assignments %}
-      <span class="badge badge-draft" style="font-size: 0.85rem; padding: 4px 12px;">🔒 Sealed Draft</span>
-      {% else %}
-      <span class="badge badge-inactive" style="font-size: 0.85rem; padding: 4px 12px;">Unassigned</span>
-      {% endif %}
-    </div>
-  </div>
-</div>
-
-{% if is_test_mode %}
-
-<p class="ui-context-note"><strong>Test mode.</strong> Explore sample assignments without changing anything official. Real matches are never displayed here.</p>
-
+<p class="ui-context-note"><strong>Test mode:</strong> sample matches only. No real results or emails.</p>
 <!-- Test Configuration Form -->
 <div class="card" style="margin-bottom: 24px;">
   <div class="card-header">
@@ -428,10 +411,6 @@
     <label class="ui-constraint-optin"><input type="checkbox" name="waiver" value="1"> Use the suggested feasible limits instead of the impossible settings above.</label>
     {% endif %}
     <button type="submit" class="btn btn-primary ui-primary-action" data-confirm="Prepare and securely store real assignments? They will remain hidden and no emails will be sent.">Prepare sealed assignments</button>
-  </form>
-</div>
-
-{% elif not is_published and assignments %}
   </form>
 </div>
 
