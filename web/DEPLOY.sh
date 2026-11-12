@@ -34,5 +34,5 @@ fi
 
 echo "=== Deployment completed successfully ==="
 echo "Application URL: https://taylorarchibald.com/christmas/"
-echo "Local Binding:   http://127.0.0.1:13045/christmas/"
-echo "Health Check:    http://127.0.0.1:13045/health"
+echo "Local Binding:   http://127.0.0.1:13046/christmas/"
+echo "Health Check:    http://127.0.0.1:13046/health"

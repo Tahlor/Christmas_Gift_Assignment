@@ -20,7 +20,7 @@ fi
 export CHRISTMAS_DB_PATH="${CHRISTMAS_DB_PATH:-/home/ubuntu/webapps_data/christmas_exchange/christmas.db}"
 
 # Port & execution command
-PORT="${CHRISTMAS_PORT:-13045}"
+PORT="${CHRISTMAS_PORT:-13046}"
 PYTHON_BIN="${PYTHON_BIN:-/home/ubuntu/py311/bin/python}"
 if [ ! -x "$PYTHON_BIN" ]; then PYTHON_BIN="$(command -v python3)"; fi
 export EXEC_CMD="$PYTHON_BIN -m web.app --host 127.0.0.1 --port $PORT"

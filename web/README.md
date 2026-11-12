@@ -45,7 +45,7 @@ A modern, secure, and mathematically fair family-to-family Christmas gift exchan
 | `CHRISTMAS_SESSION_SECRET` | **Yes** (Prod) | *(None)* | Strong secret key for signing session cookies (minimum 16 chars). |
 | `CHRISTMAS_DB_PATH` | No | `workspace/data/christmas.db` | Absolute path to the SQLite database file. |
 | `CHRISTMAS_COOKIE_SECURE` | No | `false` | Set to `true` when serving behind HTTPS in production. |
-| `CHRISTMAS_PORT` | No | `13045` | TCP port Waitress listens on (bound to `127.0.0.1`). |
+| `CHRISTMAS_PORT` | No | `13046` | TCP port Waitress listens on (bound to `127.0.0.1`). |
 | `SMTP_HOST` | No | *(Empty)* | SMTP server hostname (e.g. `smtp.sendgrid.net`). |
 | `SMTP_PORT` | No | `587` | SMTP server port (587 for STARTTLS, 465 for SSL). |
 | `SMTP_USER` | No | *(Empty)* | SMTP authentication username. |
@@ -57,12 +57,12 @@ A modern, secure, and mathematically fair family-to-family Christmas gift exchan
 
 ## Reverse Proxy Configuration (Nginx on Archimedes)
 
-The application listens on `127.0.0.1:13045` and serves all application routes under the `/christmas` prefix, with `/health` and `/christmas/health` endpoints available for health checks.
+The application listens on `127.0.0.1:13046` and serves all application routes under the `/christmas` prefix, with `/health` and `/christmas/health` endpoints available for health checks.
 
 ```nginx
 # Nginx snippet for https://taylorarchibald.com/christmas/
 location /christmas/ {
-    proxy_pass http://127.0.0.1:13045/christmas/;
+    proxy_pass http://127.0.0.1:13046/christmas/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -77,7 +77,7 @@ location /christmas/ {
 
 # Optional root health check route
 location = /health {
-    proxy_pass http://127.0.0.1:13045/health;
+    proxy_pass http://127.0.0.1:13046/health;
     proxy_set_header Host $host;
 }
 ```
@@ -99,7 +99,7 @@ The Archimedes service manager handles systemd installation, log streaming, and 
 ./web/APP.sh log
 
 # Manual standalone execution
-python3 -m web.app --host 127.0.0.1 --port 13045
+python3 -m web.app --host 127.0.0.1 --port 13046
 ```
 
 ---
@@ -116,7 +116,7 @@ python3 -m web.app --host 127.0.0.1 --port 13045
 4. [ ] Verify Nginx reverse proxy configuration and reload Nginx.
 5. [ ] Execute `./web/DEPLOY.sh` or register systemd service via `./web/APP.sh install`.
 6. [ ] Verify health endpoints:
-   - `curl -I http://127.0.0.1:13045/health` (HTTP 200)
+   - `curl -I http://127.0.0.1:13046/health` (HTTP 200)
    - `curl -I https://taylorarchibald.com/christmas/health` (HTTP 200)
 7. [ ] Log in to Admin Dashboard at `https://taylorarchibald.com/christmas/admin/login`.
 8. [ ] Import or enter families via CSV or manual entry.
