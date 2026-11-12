@@ -33,6 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const form = selector.closest("form");
     const explainer = form && form.querySelector("[data-method-explainer]");
     const fixed = form && form.querySelector("[data-fixed-config]");
+    const coverage = form && form.querySelector('input[name="enforce_sliding_coverage"]');
     const update = () => {
       const description = methods[selector.value] || methods.shuffled_rotation;
       if (explainer) {
@@ -44,6 +45,12 @@ document.addEventListener("DOMContentLoaded", () => {
         lead.textContent = "Example: ";
         example.append(lead, document.createTextNode(description.example));
         explainer.append(summary, example);
+        if (description.warning && coverage && coverage.checked) {
+          const notice = document.createElement("p");
+          notice.className = "ui-method-conflict";
+          notice.textContent = "To choose this method, turn off 'Guarantee full coverage' above. The app will not quietly relax that rule.";
+          explainer.append(notice);
+        }
         explainer.classList.toggle("method-explainer-warning", description.warning);
       }
       if (fixed) {
@@ -53,6 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     };
     selector.addEventListener("change", update);
+    if (coverage) coverage.addEventListener("change", update);
     update();
   });
 
