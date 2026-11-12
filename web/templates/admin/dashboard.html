@@ -20,7 +20,7 @@
 <div class="card" style="margin-bottom: 24px;">
   <div class="card-header">
     <div>
-      <h2 class="card-title">Set the rules</h2>
+      <h2 class="card-title">Try an assignment</h2>
       
     </div>
   </div>
@@ -28,47 +28,24 @@
   <form method="POST" action="{{ url_for('admin.test_lab') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <!-- Rules A & B Configuration Cards -->
-    <div class="rule-cards-grid">
-      <div class="rule-card">
-        <div class="rule-header">
-          <span class="rule-badge">Rule A</span>
-          <strong style="font-size: 0.92rem;">Avoid repeat recipients</strong>
-        </div>
-        <p class="rule-desc">
-          Each family avoids recipients it gave to during the previous number of Christmases.
-        </p>
-        <div class="rule-input-group">
-          <label for="test_no_repeat" style="font-size: 0.88rem; font-weight: 600;">Avoid repeats for</label>
-          <input type="number" id="test_no_repeat" name="no_repeat_years" class="form-control form-control-sm" value="{{ no_repeat_years }}" min="0">
-          <span style="font-size: 0.82rem; color: var(--color-text-muted);">years</span>
-        </div>
+    
+    <div class="ui-rule-pair">
+      <div class="ui-rule-field">
+        <strong>Avoid repeat recipients</strong>
+        <label for="test_no_repeat">Don't give to the same family from the previous
+          <input id="test_no_repeat" type="number" name="no_repeat_years" min="0" value="{{ no_repeat_years }}" class="form-control ui-inline-number" required> years.
+        </label>
       </div>
-
-      <div class="rule-card">
-        <div class="rule-header">
-          <span class="rule-badge">Rule B</span>
-          <strong style="font-size: 0.92rem;">Give to everyone</strong>
-        </div>
-        <p class="rule-desc">
-          Each family gives to all the other families within every consecutive window of years, including across cycle boundaries.
-        </p>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div class="rule-input-group">
-            <label for="test_coverage_k" style="font-size: 0.88rem; font-weight: 600;">Within every</label>
-            <input type="number" id="test_coverage_k" name="coverage_window_k" class="form-control form-control-sm" value="{{ coverage_window_k }}" min="1">
-            <span style="font-size: 0.82rem; color: var(--color-text-muted);">consecutive years</span>
-          </div>
-          <label style="font-size: 0.82rem; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}>
-            Guarantee complete coverage
-          </label>
-        </div>
+      <div class="ui-rule-field">
+        <strong>Give to everyone</strong>
+        <label for="test_coverage_k">Each family gives to all others within every
+          <input id="test_coverage_k" type="number" name="coverage_window_k" min="1" value="{{ coverage_window_k }}" class="form-control ui-inline-number" required> years.
+        </label>
+        <label class="ui-rule-check"><input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}> Guarantee full coverage</label>
       </div>
     </div>
 
-    
-    <div class="ui-method-group">
+<div class="ui-method-group">
       <label for="test_assignment_mode" class="form-label">How should families be matched?</label>
       <select id="test_assignment_mode" name="assignment_mode" class="form-control" data-method-selector>
         <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
@@ -320,55 +297,32 @@
 <div class="card" style="border: 1px solid var(--color-primary); margin-bottom: 24px;">
   <div class="card-header">
     <div>
-      <h2 class="card-title">🎁 Prepare Official Assignments</h2>
-      <p class="card-subtitle">Generate official sealed draft assignments for Christmas {{ current_year }}. Pairings remain hidden behind spoiler protection and are not visible to families until you release them.</p>
+      <h2 class="card-title">Prepare assignments</h2>
+      <p class="card-subtitle">Keep the matches secret until you release them. No emails are sent yet.</p>
     </div>
   </div>
 
   <form method="POST" action="{{ url_for('admin.prepare_assignments') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <!-- Two Plain English Rules -->
-    <div class="rule-cards-grid">
-      <div class="rule-card">
-        <div class="rule-header">
-          <span class="rule-badge">Rule A</span>
-          <strong style="font-size: 0.92rem;">Avoid repeat recipients</strong>
-        </div>
-        <p class="rule-desc">
-          Each family avoids recipients it gave to during the previous number of Christmases.
-        </p>
-        <div class="rule-input-group">
-          <label for="prep_no_repeat" style="font-size: 0.88rem; font-weight: 600;">Avoid repeats for</label>
-          <input type="number" id="prep_no_repeat" name="no_repeat_years" class="form-control form-control-sm" value="{{ no_repeat_years }}" min="0">
-          <span style="font-size: 0.82rem; color: var(--color-text-muted);">years</span>
-        </div>
+    
+    <div class="ui-rule-pair">
+      <div class="ui-rule-field">
+        <strong>Avoid repeat recipients</strong>
+        <label for="prep_no_repeat">Don't give to the same family from the previous
+          <input id="prep_no_repeat" type="number" name="no_repeat_years" min="0" value="{{ no_repeat_years }}" class="form-control ui-inline-number" required> years.
+        </label>
       </div>
-
-      <div class="rule-card">
-        <div class="rule-header">
-          <span class="rule-badge">Rule B</span>
-          <strong style="font-size: 0.92rem;">Give to everyone</strong>
-        </div>
-        <p class="rule-desc">
-          Each family gives to all the other families within every consecutive window of years, including across cycle boundaries.
-        </p>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div class="rule-input-group">
-            <label for="prep_coverage_k" style="font-size: 0.88rem; font-weight: 600;">Within every</label>
-            <input type="number" id="prep_coverage_k" name="coverage_window_k" class="form-control form-control-sm" value="{{ coverage_window_k }}" min="1">
-            <span style="font-size: 0.82rem; color: var(--color-text-muted);">consecutive years</span>
-          </div>
-          <label style="font-size: 0.82rem; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}>
-            Guarantee complete coverage
-          </label>
-        </div>
+      <div class="ui-rule-field">
+        <strong>Give to everyone</strong>
+        <label for="prep_coverage_k">Each family gives to all others within every
+          <input id="prep_coverage_k" type="number" name="coverage_window_k" min="1" value="{{ coverage_window_k }}" class="form-control ui-inline-number" required> years.
+        </label>
+        <label class="ui-rule-check"><input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}> Guarantee full coverage</label>
       </div>
     </div>
 
-
-    <div class="ui-method-group">
+<div class="ui-method-group">
       <label for="prep_assignment_mode" class="form-label">How should families be matched?</label>
       <select id="prep_assignment_mode" name="assignment_mode" class="form-control" data-method-selector>
         <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
