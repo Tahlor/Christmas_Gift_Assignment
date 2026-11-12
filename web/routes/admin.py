@@ -2,6 +2,11 @@
 
 from datetime import datetime
 import json
+import os
+import hmac
+import urllib.request
+import urllib.error
+import urllib.parse
 from flask import (
     Blueprint,
     Response,
@@ -67,6 +72,55 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/christmas")
 # ---------------------------------------------------------
 # Authentication Routes
 # ---------------------------------------------------------
+
+@admin_bp.route("/admin/sso", methods=["GET"])
+def admin_sso():
+    """Authenticate the organizer using the existing validated Universal SSO session."""
+    state = request.args.get("state", "")
+    expected = session.get("_csrf_token", "")
+    if not state or not expected or not hmac.compare_digest(state, expected):
+        abort(400, description="Invalid login state. Start from the organizer login page.")
+
+    return_url = "https://taylorarchibald.com" + url_for("admin.admin_sso", state=state)
+    sso_login = "/sso/login?return_url=" + urllib.parse.quote(return_url, safe="")
+    cookie = request.headers.get("Cookie", "")
+    if not cookie or "universal_sso_token=" not in cookie:
+        return redirect(sso_login)
+
+    auth_request = urllib.request.Request(
+        "http://127.0.0.1:5050/sso/auth-request",
+        headers={
+            "Cookie": cookie,
+            "X-Original-URI": "/hub/",
+            "Host": "taylorarchibald.com"
+        }
+    )
+    try:
+        with urllib.request.urlopen(auth_request, timeout=3) as response:
+            if response.status != 204:
+                abort(403)
+            identity = (response.headers.get("X-Auth-Request-User", "") or "").strip().lower()
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            return redirect(sso_login) if exc.code == 401 else abort(403)
+        abort(503)
+    except (urllib.error.URLError, TimeoutError):
+        abort(503, description="Universal SSO is temporarily unavailable. Use organizer password instead.")
+
+    allowed = {
+        email.strip().lower()
+        for email in os.environ.get("CHRISTMAS_ADMIN_SSO_USERS", "").split(",")
+        if email.strip()
+    }
+    if not allowed or identity not in allowed:
+        abort(403, description="This account is not a Christmas exchange organizer.")
+
+    session.clear()
+    session["is_admin"] = True
+    session.permanent = False
+    flash("Signed in with Universal SSO.", "success")
+    return redirect(url_for("admin.dashboard"))
+
 
 @admin_bp.route("/admin/login", methods=["GET", "POST"])
 def admin_login():

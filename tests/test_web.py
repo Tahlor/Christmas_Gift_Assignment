@@ -748,3 +748,14 @@ class TestConfigValidation:
         monkeypatch.setattr(Config, "SECRET_KEY", "very-strong-secure-production-secret-123456789")
         # Should not raise
         Config.validate_production()
+
+
+
+def test_sso_login_requires_state_and_verified_session(client):
+    # Login state is CSRF-bound; anonymous visitors cannot create admin sessions.
+    assert client.get("/christmas/admin/sso").status_code == 400
+    with client.session_transaction() as sess:
+        sess["_csrf_token"] = "test-state"
+    r = client.get("/christmas/admin/sso?state=test-state")
+    assert r.status_code == 302
+    assert r.location.startswith("/sso/login?")

@@ -10,6 +10,12 @@
     <p style="color: var(--color-text-muted); font-size: 0.9rem;">Sign in to manage families and assignments</p>
   </div>
 
+  <a href="{{ url_for('admin.admin_sso', state=csrf_token()) }}" class="btn btn-primary" style="display: block; width: 100%; text-align: center; text-decoration: none;">Continue with Universal SSO</a>
+  <p class="form-hint" style="text-align: center; margin: 10px 0 22px;">Uses your existing account for the family site.</p>
+
+  <details>
+    <summary style="cursor: pointer; color: var(--color-text-muted);">Use organizer password instead</summary>
+    <div style="margin-top: 18px;">
   <form method="POST" action="{{ url_for('admin.admin_login') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -32,5 +38,7 @@
       <button type="submit" class="btn btn-primary" style="width: 100%;">Sign In</button>
     </div>
   </form>
+    </div>
+  </details>
 </div>
 {% endblock %}
