@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}History & Fairness - Christmas Gift Exchange{% endblock %}
+
+{% block content %}
+<div class="card-header">
+  <div>
+    <h1 style="color: var(--color-primary); font-size: 1.6rem; font-weight: 800;">Assignment History & Fairness</h1>
+    <p style="color: var(--color-text-muted);">Historical records across all exchange years with fairness analysis and repeat tracking.</p>
+  </div>
+  <div class="btn-group">
+    <a href="{{ url_for('admin.export_history') }}" class="btn btn-secondary">Export History CSV</a>
+  </div>
+</div>
+
+<!-- Fairness & Coverage Analytics -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">📊 Coverage & Fairness Summary</h2>
+    <span class="badge badge-published">{{ analysis.total_years_recorded }} Years Recorded</span>
+  </div>
+
+  {% if analysis.consecutive_repeats %}
+  <div class="alert alert-warning" style="margin-bottom: 20px;">
+    <strong>⚠️ Consecutive Year Repeats Detected:</strong>
+    <ul style="margin: 8px 0 0 20px;">
+      {% for r in analysis.consecutive_repeats %}
+      <li>
+        <strong>{{ family_map[r.giver] }}</strong> gave to <strong>{{ family_map[r.receiver] }}</strong> in consecutive years ({{ r.years[0] }} and {{ r.years[1] }}).
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <div class="alert alert-success" style="margin-bottom: 20px;">
+    ✓ No consecutive-year recipient repeats found in recorded history.
+  </div>
+  {% endif %}
+
+  <!-- Family Coverage Progress Table -->
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Family</th>
+          <th>Total Exchanges</th>
+          <th>Distinct Families Given To</th>
+          <th>Coverage of Other Families</th>
+          <th>Remaining to Give To</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fid, stats in analysis.family_stats.items() %}
+        <tr>
+          <td style="font-weight: 600; color: var(--color-primary);">{{ family_map[fid] }}</td>
+          <td>{{ stats.total_given }}</td>
+          <td>{{ stats.distinct_given }}</td>
+          <td>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="flex: 1; height: 8px; background-color: var(--color-border); border-radius: 4px; overflow: hidden; max-width: 140px;">
+                <div style="height: 100%; width: {{ stats.coverage_pct }}%; background-color: var(--color-primary);"></div>
+              </div>
+              <span style="font-size: 0.85rem; font-weight: 600;">{{ stats.coverage_pct }}%</span>
+            </div>
+          </td>
+          <td>
+            {% if stats.unassigned_count == 0 %}
+            <span class="badge badge-published">Full Cycle Met</span>
+            {% else %}
+            <span style="color: var(--color-text-muted); font-size: 0.88rem;">{{ stats.unassigned_count }} families</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Chronological History Records -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">📜 Past Exchange Years</h2>
+  </div>
+
+  {% if history_records %}
+    {% for rec in history_records %}
+    <div style="margin-bottom: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden;">
+      <div style="background-color: #faf9f5; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--color-border);">
+        <h3 style="color: var(--color-primary); font-size: 1.1rem; font-weight: 700;">Christmas {{ rec.year }}</h3>
+        <div>
+          {% if rec.published == 1 %}
+          <span class="badge badge-published">Published</span>
+          {% else %}
+          <span class="badge badge-draft">Draft</span>
+          {% endif %}
+          {% if rec.published_at %}
+          <span style="font-size: 0.8rem; color: var(--color-text-muted); margin-left: 8px;">Published on {{ rec.published_at[:10] }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="table-responsive" style="border: none; border-radius: 0;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Giver Family</th>
+              <th style="width: 40px; text-align: center;">→</th>
+              <th>Recipient Family</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in rec.assignments %}
+            <tr>
+              <td style="font-weight: 600;">{{ a.giver_name }}</td>
+              <td style="text-align: center; color: var(--color-accent);">🎁</td>
+              <td style="font-weight: 600; color: var(--color-primary);">{{ a.receiver_name }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-icon">📜</div>
+    <h3 style="color: var(--color-primary); margin-bottom: 6px;">No Historical Records</h3>
+    <p style="color: var(--color-text-muted); max-width: 440px; margin: 0 auto;">
+      As you save and publish assignments each year, historical records and fairness metrics will accumulate here.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

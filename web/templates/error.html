@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - Christmas Gift Exchange{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 580px; margin: 40px auto; text-align: center;">
+  <div style="font-size: 3rem; margin-bottom: 12px;">❄️</div>
+  <h1 style="color: var(--color-primary); font-size: 1.6rem; margin-bottom: 10px;">{{ code }}: {{ title }}</h1>
+  <p style="color: var(--color-text-muted); margin-bottom: 24px;">{{ message }}</p>
+  <div>
+    {% if session.get('is_admin') %}
+    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-primary">Return to Dashboard</a>
+    {% else %}
+    <a href="{{ url_for('admin.admin_login') }}" class="btn btn-secondary">Admin Login</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

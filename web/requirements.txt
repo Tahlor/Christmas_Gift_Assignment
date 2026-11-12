@@ -1,0 +1,4 @@
+# Runtime and test dependencies for Christmas Gift Exchange web app
+flask>=3.0.0
+waitress>=3.0.0
+pytest>=8.0.0

@@ -120,3 +120,7 @@ Simulating algorithms with 4 participants over 100000 trials:
 ```
 
 `smart_last_choice_with_shuffle` is the only one guaranteed to produce valid assignments on the first try. Shuffling is still needed, otherwise the second to last person is disproportionately assigned to the last person.
+
+## Christmas Gift Exchange Web App (2026+)
+
+The `web/` subsystem adds an organizer dashboard, private per-family pages, editable wish lists, CSV roster imports, publication controls, history, and configurable full-coverage rotation or random assignments, without replacing the original command-line system. See [`web/README.md`](web/README.md) for deployment and security details. No assignments or invitations are published automatically.

@@ -10,3 +10,16 @@ configs/*.yaml
 !config.example.yaml
 
 *.pyc
+
+# Christmas webapp secrets and persistent data
+.env
+**/.env
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+web/data/
+data/
+logs/
+__pycache__/
+.pytest_cache/

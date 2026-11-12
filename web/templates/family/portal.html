@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}{{ family.name }} - Christmas Gift Portal{% endblock %}
+
+{% block content %}
+<!-- Welcome Header Banner -->
+<div class="portal-hero">
+  <h1>🎄 Welcome, {{ family.name }} Family!</h1>
+  <p>Here is your private Christmas gift exchange portal for {{ current_year }}. Bookmark this link to check back anytime.</p>
+</div>
+
+<!-- Published Assignment or Friendly Empty State -->
+{% if published and recipient %}
+<div class="assignment-card">
+  <div style="text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.85rem; font-weight: 700; color: var(--color-primary);">
+    🎁 Your Secret Gift Assignment for Christmas {{ current_year }}
+  </div>
+  <div style="font-size: 1.1rem; color: var(--color-text-muted); margin-top: 6px;">You are giving a gift to:</div>
+  <div class="recipient-name">{{ recipient.receiver_name }}</div>
+
+  <div class="form-row" style="margin-top: 20px;">
+    <!-- Recipient Mailing Address -->
+    <div style="background: #faf9f5; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px;">
+      <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--color-primary); margin-bottom: 8px;">📬 Mailing Address</h3>
+      {% if recipient.receiver_address %}
+      <div style="font-size: 0.95rem; white-space: pre-line; color: var(--color-text);">{{ recipient.receiver_address }}</div>
+      {% else %}
+      <div style="font-size: 0.9rem; color: var(--color-text-muted); font-style: italic;">No mailing address provided yet.</div>
+      {% endif %}
+    </div>
+
+    <!-- Recipient Preferences / Notes -->
+    <div style="background: #faf9f5; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px;">
+      <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--color-primary); margin-bottom: 8px;">ℹ️ Preferences & Sizing Notes</h3>
+      {% if recipient.receiver_notes %}
+      <div style="font-size: 0.95rem; color: var(--color-text);">{{ recipient.receiver_notes }}</div>
+      {% else %}
+      <div style="font-size: 0.9rem; color: var(--color-text-muted); font-style: italic;">No special notes or sizes listed.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Recipient Live Wishlist -->
+  <div style="margin-top: 24px;">
+    <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--color-primary); margin-bottom: 8px;">
+      🎁 {{ recipient.receiver_name }}'s Live Wish List
+    </h3>
+    {% if recipient_wishlist %}
+    <ul class="wishlist-pill-list">
+      {% for item in recipient_wishlist %}
+      <li class="wishlist-pill-item">
+        {{ item.item_text }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p style="color: var(--color-text-muted); font-style: italic; font-size: 0.95rem; margin-top: 8px;">
+      {{ recipient.receiver_name }} hasn't added any specific wish list items yet. Check back soon!
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+<!-- Friendly Empty State Before Publish -->
+<div class="empty-state">
+  <div class="empty-state-icon">🎄</div>
+  <h2 style="color: var(--color-primary); font-size: 1.4rem; margin-bottom: 8px;">
+    Christmas {{ current_year }} Assignments Coming Soon!
+  </h2>
+  <p style="color: var(--color-text-muted); max-width: 520px; margin: 0 auto 16px; font-size: 0.98rem;">
+    Assignments for this year have not been published yet. The organizer is finalizing the details.
+    In the meantime, make sure your family's wish list and mailing address below are up to date!
+  </p>
+  <div style="display: inline-block; background-color: var(--color-primary-subtle); color: var(--color-primary); padding: 6px 14px; border-radius: 9999px; font-size: 0.85rem; font-weight: 600;">
+    Your secret assignment will appear here as soon as announced.
+  </div>
+</div>
+{% endif %}
+
+<!-- Family's Own Wish List & Address Editor -->
+<div class="form-row">
+  <!-- Wish List Editor -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">📝 Your Family's Wish List</h2>
+        <p class="card-subtitle">The secret family giving to you will see these items.</p>
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('family.update_wishlist', token=token) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="form-group">
+        <label for="wishlist_text" class="form-label">Gift Ideas (One item per line)</label>
+        <textarea
+          id="wishlist_text"
+          name="wishlist_text"
+          class="form-control"
+          rows="6"
+          placeholder="e.g. Board games (Settlers of Catan)&#10;Warm wool throw blanket&#10;Favorite dark chocolates or local treats"
+        >{{ own_wishlist_text }}</textarea>
+        <div class="form-hint">Enter links, ideas, or clothing sizes. Put each item on a new line.</div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Save Wish List</button>
+    </form>
+  </div>
+
+  <!-- Contact & Mailing Address Update -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">📬 Your Mailing Address & Notes</h2>
+        <p class="card-subtitle">Ensure your secret giver knows where to send your package.</p>
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('family.update_contact', token=token) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="form-group">
+        <label for="mailing_address" class="form-label">Mailing Address</label>
+        <textarea
+          id="mailing_address"
+          name="mailing_address"
+          class="form-control"
+          rows="3"
+          placeholder="123 Evergreen Terrace&#10;City, State 12345"
+        >{{ family.mailing_address }}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="notes" class="form-label">Preferences, Sizes & Dietary Notes</label>
+        <textarea
+          id="notes"
+          name="notes"
+          class="form-control"
+          rows="2"
+          placeholder="e.g. Nut allergies; kids wear size M and L"
+        >{{ family.notes }}</textarea>
+      </div>
+
+      <button type="submit" class="btn btn-forest">Update Address & Notes</button>
+    </form>
+  </div>
+</div>
+
+<!-- Privacy Reassurance Box -->
+<div class="card" style="background-color: #faf9f6; border-left: 4px solid var(--color-primary); font-size: 0.9rem; color: var(--color-text-muted);">
+  <strong>🔒 Privacy Notice:</strong>
+  Your secret giver is kept completely secret — you will never see who is giving to you.
+  Only the secret family assigned to give to you will be able to see your wish list and mailing address.
+</div>
+{% endblock %}

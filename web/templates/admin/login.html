@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login - Christmas Gift Exchange{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 440px; margin: 48px auto;">
+  <div style="text-align: center; margin-bottom: 24px;">
+    <div style="font-size: 2.8rem; margin-bottom: 8px;">🎄</div>
+    <h1 style="color: var(--color-primary); font-size: 1.5rem; margin-bottom: 4px;">Exchange Organizer</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9rem;">Sign in to manage families and assignments</p>
+  </div>
+
+  <form method="POST" action="{{ url_for('admin.admin_login') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-group">
+      <label for="password" class="form-label">Admin Password</label>
+      <input
+        type="password"
+        id="password"
+        name="password"
+        class="form-control"
+        required
+        autocomplete="current-password"
+        placeholder="Enter organizer password"
+        autofocus
+      >
+      <div class="form-hint">Configured via CHRISTMAS_ADMIN_PASSWORD on Archimedes.</div>
+    </div>
+
+    <div style="margin-top: 24px;">
+      <button type="submit" class="btn btn-primary" style="width: 100%;">Sign In</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

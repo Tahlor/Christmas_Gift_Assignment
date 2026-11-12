@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Christmas Gift Exchange{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-container">
+      <a href="{{ url_for('admin.dashboard') if session.get('is_admin') else '#' }}" class="brand">
+        <span class="brand-icon">🎄</span>
+        <span>Family Christmas Exchange</span>
+      </a>
+
+      {% if session.get('is_admin') %}
+      <nav aria-label="Main Navigation">
+        <ul class="nav-links">
+          <li>
+            <a href="{{ url_for('admin.dashboard') }}" class="nav-link {{ 'active' if active_tab == 'dashboard' else '' }}">Dashboard</a>
+          </li>
+          <li>
+            <a href="{{ url_for('admin.families_list') }}" class="nav-link {{ 'active' if active_tab == 'families' else '' }}">Families</a>
+          </li>
+          <li>
+            <a href="{{ url_for('admin.history') }}" class="nav-link {{ 'active' if active_tab == 'history' else '' }}">History</a>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="header-actions">
+        <form method="POST" action="{{ url_for('admin.admin_logout') }}" style="display: inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-secondary btn-sm">Log Out</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flash-container">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category if category != 'message' else 'info' }}" role="alert">
+          <div>{{ message }}</div>
+          <button type="button" class="alert-close" aria-label="Close alert">&times;</button>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p>Family Christmas Gift Exchange &bull; Safe, private, and mathematically fair.</p>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
