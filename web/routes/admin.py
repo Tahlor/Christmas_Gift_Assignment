@@ -286,6 +286,9 @@ def dashboard():
     seed_fingerprint = get_seed_fingerprint()
     has_published = has_published_years()
 
+    # Historical confidence badges only; never expose recipient pairings here.
+    recent_history = get_historical_years_summary()[:3]
+
     # Address reviews
     pending_address_reviews = get_pending_address_reviews()
 
@@ -342,6 +345,7 @@ def dashboard():
         seed_fingerprint=seed_fingerprint,
         has_published=has_published,
         pending_address_reviews=pending_address_reviews,
+        recent_history=recent_history,
         tracking_data=tracking_data,
         guess_submission_status=guess_submission_status,
         guess_stats=guess_stats,
