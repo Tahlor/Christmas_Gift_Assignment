@@ -15,6 +15,7 @@ from flask import (
     url_for,
 )
 from web.db import get_db
+from web.sso_auth import auto_login_from_existing_sso
 
 
 def verify_admin_password(provided_password: str) -> bool:
@@ -52,7 +53,7 @@ def admin_required(view_func):
     """Decorator ensuring administrator authentication."""
     @functools.wraps(view_func)
     def wrapped_view(*args, **kwargs):
-        if not session.get("is_admin"):
+        if not session.get("is_admin") and not auto_login_from_existing_sso():
             return redirect(url_for("admin.admin_login", next=request.path))
         return view_func(*args, **kwargs)
     return wrapped_view
