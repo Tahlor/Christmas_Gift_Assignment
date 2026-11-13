@@ -1466,3 +1466,59 @@ def test_mobile_v4_custom_fixed_test_matches_selected_rotation_without_side_effe
     assert rejected.status_code == 200
     assert b"Test" in rejected.data
     assert b"error" in rejected.data.lower()
+
+
+def test_archived_reconstruction_is_one_partial_year_with_individual_verified_evidence(app, client):
+    """An inferred full cycle is not the same thing as five verified pairings."""
+    from web.db import get_db
+    from web.models import get_historical_years_summary
+    from web.assignment import analyze_history_coverage
+
+    with app.app_context():
+        ids = [create_family(f"Archive sample {i}", f"a{i}@example.test") for i in range(5)]
+        pairs = [(ids[i], ids[(i+1) % 5]) for i in range(5)]
+        save_manual_history_for_year(2024, pairs, confidence="partial",
+                                     notes="Four reconstructed, one confirmed.")
+        db = get_db()
+        with db:
+            db.execute("UPDATE assignments SET confidence='confirmed' WHERE year=2024 AND giver_family_id=?",
+                       (ids[0],))
+        save_manual_history_for_year(2025, pairs, confidence="confirmed",
+                                     notes="Full five-family list confirmed by organizer.")
+        overview = get_historical_years_summary()
+        assert len(overview) == 2
+        assert overview[0]["year"] == 2025 and overview[0]["confirmed_pairings"] == 5
+        assert overview[1]["year"] == 2024 and overview[1]["confidence"] == "partial"
+        assert overview[1]["pairing_count"] == 5 and overview[1]["confirmed_pairings"] == 1
+
+        confirmed_history = {}
+        for x in db.execute("SELECT year,giver_family_id,receiver_family_id FROM assignments WHERE confidence='confirmed'"):
+            confirmed_history.setdefault(x["year"], {})[x["giver_family_id"]] = x["receiver_family_id"]
+        stats = analyze_history_coverage(ids, confirmed_history)
+        assert len(stats["consecutive_repeats"]) == 1
+        assert get_recent_history_disallowed(ids, 2026, 2)[ids[0]] == {ids[1]}
+
+    login_admin(client)
+    history_page = client.get("/christmas/admin/history")
+    assert history_page.status_code == 200
+    assert b"Reconstructed (partly verified)" in history_page.data
+    assert b"5 pairings; 1 verified" in history_page.data
+    assert b"1 consecutive repeat(s)" in history_page.data
+
+
+def test_organizer_leads_with_next_action_and_hides_configuration_below_family_activity(client):
+    login_admin(client)
+    official = client.get("/christmas/admin/dashboard?mode=official")
+    body = official.get_data(as_text=True)
+    assert official.status_code == 200
+    assert body.index("Set up the draw") < body.index("Family activity")
+    assert body.index("Family activity") < body.index('id="official-config"')
+    assert body.index('id="official-config"') < body.index("Advanced System Settings")
+    assert '<details id="official-config"' in body
+    test_page = client.get("/christmas/admin/dashboard?mode=test")
+    html = test_page.get_data(as_text=True)
+    assert test_page.status_code == 200
+    assert html.index("Configure and run a test") < html.index('id="test-config"')
+    assert '<details id="test-config"' in html
+    js = client.get("/christmas/static/js/app.js")
+    assert b"[data-open-config]" in js.data
