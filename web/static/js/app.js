@@ -64,6 +64,20 @@ document.addEventListener("DOMContentLoaded", () => {
     update();
   });
 
+  // Jump to rarely used configuration only when the organizer asks for it.
+  document.querySelectorAll("[data-open-config]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.openConfig);
+      if (!target) return;
+      target.open = true;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      const firstInput = target.querySelector("select, input:not([type=hidden])");
+      if (firstInput) {
+        firstInput.focus({ preventScroll: true });
+      }
+    });
+  });
+
   // 1. Copy to clipboard handlers
   document.querySelectorAll("[data-copy-target]").forEach((button) => {
     button.addEventListener("click", async (e) => {
