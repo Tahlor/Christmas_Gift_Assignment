@@ -33,7 +33,7 @@ When transitioning from confirmed assignments made under a different system, the
 
 Every official giver-recipient pair is stored explicitly for that calendar year. Pairings are never recomputed from a seed as historical truth. At preparation time, archive metadata captures mode, L, K, seed fingerprint, roster fingerprint and rotation configuration; release does not replace this snapshot. An unreleased sealed draft can only be regenerated after an explicit discard. Released years cannot be silently republished or overwritten.
 
-Manual previous-year pairing entry/CSV import distinguishes confirmed and incomplete history. The 2024 deterministic reconstruction is a private **candidate**, corroborated for only one household from old mail, and has not been inserted as confirmed history. The 2025 matching has not been recovered.
+Manual previous-year pairing entry/CSV import distinguishes confirmed and incomplete history. **Current historical archive (November 13, 2026):** the user supplied all five 2025 pairings and they were stored as confirmed. For 2024, the exact original GitHub assignment algorithm with seed 2024 reproduced all five pairings, and archived December 2024 messages independently corroborated Taylor/Krystalee giving to Erik/Emily. The organizer accepted that complete deterministic reconstruction as the actual historical 2024 draw. All five are included as confirmed historical planning facts, while the provenance note explicitly distinguishes the one emailed pairing from the four inferred-by-code matches; no complete Pi3 output or all five sent-message copies were located. The 2024 and 2025 matches repeat two giver-recipient relationships, which must not be erased.
 
 ## Family data and address reviews
 
@@ -43,7 +43,7 @@ Doug and Amanda's currently recorded address remains unchanged. Their organizer-
 
 ## Security and operational details
 
-- Administrative pages require Universal SSO or password authentication; all mutations are CSRF-protected.
+- Administrative pages require Universal SSO or password authentication; all mutations are CSRF-protected. An existing valid shared `universal_sso_token` is verified with the local SSO service and the organizer email allowlist automatically upon entry, so no separate SSO button is necessary while the user remains signed in. Explicit Christmas logout suppresses silent re-login until the user explicitly authenticates again.
 - High-entropy private family links grant access only to that household's portal; the organizer does not automatically see official recipients.
 - Simulations never send email, alter the production seed, publish assignments, or mutate actual assignment history.
 - SMTP acceptance is not proof of delivery. Last-link-open timestamps can include automated security scanners; explicit family confirmation is more meaningful.
