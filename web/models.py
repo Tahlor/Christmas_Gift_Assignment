@@ -722,8 +722,9 @@ def get_historical_years_summary() -> List[Dict[str, object]]:
         SELECT
             a.year,
             a.provenance,
-            a.confidence,
+            COALESCE(h.confidence, a.confidence) AS confidence,
             COUNT(*) as pairing_count,
+            SUM(CASE WHEN a.confidence = 'confirmed' THEN 1 ELSE 0 END) AS confirmed_pairings,
             a.published,
             MAX(a.published_at) as published_at,
             h.notes,
@@ -737,7 +738,7 @@ def get_historical_years_summary() -> List[Dict[str, object]]:
         LEFT JOIN historical_years h ON a.year = h.year
         LEFT JOIN archive_metadata m ON a.year = m.year
         WHERE a.published = 1
-        GROUP BY a.year, a.provenance, a.confidence
+        GROUP BY a.year, a.provenance
         ORDER BY a.year DESC
         """
     ).fetchall()
@@ -748,6 +749,7 @@ def get_historical_years_summary() -> List[Dict[str, object]]:
             "provenance": r["provenance"],
             "confidence": r["confidence"],
             "pairing_count": r["pairing_count"],
+            "confirmed_pairings": r["confirmed_pairings"],
             "published": r["published"],
             "published_at": r["published_at"],
             "notes": r["notes"] or "",
