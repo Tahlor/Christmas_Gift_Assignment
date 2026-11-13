@@ -78,6 +78,72 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // In-place history spoiler updates: no navigation, reset, or scroll jump.
+  // Keep the anchor (#year-2024) intact so historical years are linkable.
+  document.addEventListener("submit", async (event) => {
+    const form = event.target.closest("form[data-ajax-spoilers]");
+    if (!form) return;
+    event.preventDefault();
+
+    const shell = document.getElementById("history-shell");
+    if (!shell) {
+      form.submit(); // Standard safe redirect if embedded on an unsupported page.
+      return;
+    }
+
+    const button = form.querySelector("button[type=submit]");
+    const oldY = window.scrollY;
+    const oldHash = location.hash;
+    if (button) button.disabled = true;
+    shell.setAttribute("aria-busy", "true");
+    try {
+      const result = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "same-origin",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Accept": "application/json"
+        },
+        redirect: "manual"
+      });
+      if (!result.ok || !(result.headers.get("Content-Type") || "").includes("json")) {
+        throw new Error("Spoiler update was not accepted.");
+      }
+      const payload = await result.json();
+      if (!payload.ok) throw new Error("Spoiler change failed.");
+
+      const refreshed = await fetch(location.pathname + location.search, {
+        credentials: "same-origin",
+        headers: { "Accept": "text/html" },
+        cache: "no-store"
+      });
+      if (!refreshed.ok || !refreshed.headers.get("Content-Type")?.includes("html")) {
+        throw new Error("Could not refresh historical results.");
+      }
+      const documentCopy = new DOMParser().parseFromString(
+        await refreshed.text(), "text/html"
+      );
+      const newShell = documentCopy.getElementById("history-shell");
+      if (!newShell) throw new Error("History view no longer available.");
+      shell.replaceWith(newShell);
+      // URL and fragment stay unchanged. No full page navigation.
+      if (oldHash && location.hash !== oldHash) {
+        history.replaceState(null, "", location.pathname + location.search + oldHash);
+      }
+      window.scrollTo({ top: oldY, behavior: "instant" });
+      const nextButton = newShell.querySelector("form[data-ajax-spoilers] button");
+      if (nextButton) nextButton.focus({ preventScroll: true });
+    } catch (error) {
+      console.error("Unable to update spoilers in place:", error);
+      // Failure fallback remains on the History route, rather than going to Dashboard.
+      form.submit();
+    } finally {
+      shell.removeAttribute("aria-busy");
+      if (button) button.disabled = false;
+    }
+  });
+
   // 1. Copy to clipboard handlers
   document.querySelectorAll("[data-copy-target]").forEach((button) => {
     button.addEventListener("click", async (e) => {
