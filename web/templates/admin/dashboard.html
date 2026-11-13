@@ -16,80 +16,13 @@
 </header>
 {% if is_test_mode %}
 <p class="ui-context-note"><strong>Test mode:</strong> sample matches only. No real results or emails.</p>
-<!-- Test Configuration Form -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <div>
-      <h2 class="card-title">Try an assignment</h2>
-      
-    </div>
+<section class="card ui-next-step" aria-label="Test assignments">
+  <div>
+    <h2>Try a sample draw</h2>
+    <p>The real assignments, production seed, and invitation emails won't change.</p>
   </div>
-
-  <form method="POST" action="{{ url_for('admin.test_lab') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-    
-    <div class="ui-rule-pair">
-      <div class="ui-rule-field">
-        <strong>Avoid repeat recipients</strong>
-        <label for="test_no_repeat">Don't give to the same family from the previous
-          <input id="test_no_repeat" type="number" name="no_repeat_years" min="0" value="{{ no_repeat_years }}" class="form-control ui-inline-number" required> years.
-        </label>
-      </div>
-      <div class="ui-rule-field">
-        <strong>Give to everyone</strong>
-        <label for="test_coverage_k">Each family gives to all others within every
-          <input id="test_coverage_k" type="number" name="coverage_window_k" min="1" value="{{ coverage_window_k }}" class="form-control ui-inline-number" required> years.
-        </label>
-        <label class="ui-rule-check"><input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}> Guarantee full coverage</label>
-      </div>
-    </div>
-
-<div class="ui-method-group">
-      <label for="test_assignment_mode" class="form-label">How should families be matched?</label>
-      <select id="test_assignment_mode" name="assignment_mode" class="form-control" data-method-selector>
-        <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
-        <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Custom fixed rotation</option>
-        <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Random each year</option>
-        <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy shuffled cycles</option>
-      </select>
-      <div class="method-explainer" data-method-explainer aria-live="polite">
-        <p>Shuffle the order once, then repeat it. Everyone gives to everyone within each four-year window.</p>
-        <small><strong>Example:</strong> A gives to B, C, D, E, then B again.</small>
-      </div>
-    </div>
-    <details class="ui-config-drawer" data-fixed-config hidden>
-      <summary>Customize fixed rotation</summary>
-      <div class="ui-field-grid">
-        <label>Family ID order <input class="form-control" type="text" name="fixed_household_order" value="{{ fixed_household_order or active_families|map(attribute='id')|join(',') }}" placeholder="1,2,3,4,5"></label>
-        <label>Year-by-year shifts <input class="form-control" type="text" name="fixed_offset_order" value="{{ fixed_offset_order or '1,2,3,4' }}" placeholder="1,2,3,4"></label>
-      </div>
-      <p class="ui-small-note">Available IDs: {% for f in active_families %}{{ f.id }} = {{ f.name }}{% if not loop.last %}; {% endif %}{% endfor %}. Use each family ID and each shift exactly once.</p>
-    </details>
-    <details class="ui-config-drawer">
-      <summary>Test seed, year and sample families</summary>
-      <div class="ui-field-grid">
-        <label>Test seed <input class="form-control" type="text" name="test_seed" value="{{ test_sim_data.test_seed if test_sim_data else 'try-2026' }}" required></label>
-        <label>Year <input class="form-control" type="number" name="year" value="{{ test_sim_data.year if test_sim_data else current_year }}" min="1900" max="2200"></label>
-        <input type="hidden" name="anchor_year" value="{{ anchor_year }}">
-        <label>Families to test
-          <select class="form-control" name="roster_choice">
-            <option value="current">Current {{ n }} families</option>
-            <option value="synthetic_4">4 example families</option>
-            <option value="synthetic_5">5 example families</option>
-            <option value="synthetic_6">6 example families</option>
-            <option value="synthetic_8">8 example families</option>
-          </select>
-        </label>
-      </div>
-      <p class="ui-small-note">This seed is only for examples. It cannot change the official seed.</p>
-    </details>
-    <div class="ui-action-row">
-      <button type="submit" name="sim_type" value="single" class="btn btn-primary">Show example assignments</button>
-      <button type="submit" name="sim_type" value="batch_100" class="btn btn-secondary">Test 100 years</button>
-    </div>
-  </form>
-</div>
+  <button type="button" class="btn btn-primary" data-open-config="test-config">Configure and run a test</button>
+</section>
 
 <!-- Test Results Display Area -->
 {% if test_sim_data %}
@@ -233,6 +166,86 @@
 </div>
 {% endif %}
 
+<details id="test-config" class="ui-exchange-config">
+  <summary><span><strong>Test options</strong><small>Rules, method, seed and sample families</small></span></summary>
+  <div class="ui-config-content"><!-- Test Configuration Form -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Try an assignment</h2>
+      
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('admin.test_lab') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    
+    <div class="ui-rule-pair">
+      <div class="ui-rule-field">
+        <strong>Avoid repeat recipients</strong>
+        <label for="test_no_repeat">Don't give to the same family from the previous
+          <input id="test_no_repeat" type="number" name="no_repeat_years" min="0" value="{{ no_repeat_years }}" class="form-control ui-inline-number" required> years.
+        </label>
+      </div>
+      <div class="ui-rule-field">
+        <strong>Give to everyone</strong>
+        <label for="test_coverage_k">Each family gives to all others within every
+          <input id="test_coverage_k" type="number" name="coverage_window_k" min="1" value="{{ coverage_window_k }}" class="form-control ui-inline-number" required> years.
+        </label>
+        <label class="ui-rule-check"><input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}> Guarantee full coverage</label>
+      </div>
+    </div>
+
+<div class="ui-method-group">
+      <label for="test_assignment_mode" class="form-label">How should families be matched?</label>
+      <select id="test_assignment_mode" name="assignment_mode" class="form-control" data-method-selector>
+        <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
+        <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Custom fixed rotation</option>
+        <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Random each year</option>
+        <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy shuffled cycles</option>
+      </select>
+      <div class="method-explainer" data-method-explainer aria-live="polite">
+        <p>Shuffle the order once, then repeat it. Everyone gives to everyone within each four-year window.</p>
+        <small><strong>Example:</strong> A gives to B, C, D, E, then B again.</small>
+      </div>
+    </div>
+    <details class="ui-config-drawer" data-fixed-config hidden>
+      <summary>Customize fixed rotation</summary>
+      <div class="ui-field-grid">
+        <label>Family ID order <input class="form-control" type="text" name="fixed_household_order" value="{{ fixed_household_order or active_families|map(attribute='id')|join(',') }}" placeholder="1,2,3,4,5"></label>
+        <label>Year-by-year shifts <input class="form-control" type="text" name="fixed_offset_order" value="{{ fixed_offset_order or '1,2,3,4' }}" placeholder="1,2,3,4"></label>
+      </div>
+      <p class="ui-small-note">Available IDs: {% for f in active_families %}{{ f.id }} = {{ f.name }}{% if not loop.last %}; {% endif %}{% endfor %}. Use each family ID and each shift exactly once.</p>
+    </details>
+    <details class="ui-config-drawer">
+      <summary>Test seed, year and sample families</summary>
+      <div class="ui-field-grid">
+        <label>Test seed <input class="form-control" type="text" name="test_seed" value="{{ test_sim_data.test_seed if test_sim_data else 'try-2026' }}" required></label>
+        <label>Year <input class="form-control" type="number" name="year" value="{{ test_sim_data.year if test_sim_data else current_year }}" min="1900" max="2200"></label>
+        <input type="hidden" name="anchor_year" value="{{ anchor_year }}">
+        <label>Families to test
+          <select class="form-control" name="roster_choice">
+            <option value="current">Current {{ n }} families</option>
+            <option value="synthetic_4">4 example families</option>
+            <option value="synthetic_5">5 example families</option>
+            <option value="synthetic_6">6 example families</option>
+            <option value="synthetic_8">8 example families</option>
+          </select>
+        </label>
+      </div>
+      <p class="ui-small-note">This seed is only for examples. It cannot change the official seed.</p>
+    </details>
+    <div class="ui-action-row">
+      <button type="submit" name="sim_type" value="single" class="btn btn-primary">Show example assignments</button>
+      <button type="submit" name="sim_type" value="batch_100" class="btn btn-secondary">Test 100 years</button>
+    </div>
+  </form>
+</div>
+
+</div>
+</details>
+
 {% else %}
 <!-- ======================================================================= -->
 <!-- OFFICIAL EXCHANGE MODE VIEW                                             -->
@@ -291,64 +304,23 @@
   </form>
 </div>
 {% endif %}
+<nav class="ui-history-strip" aria-label="Historical assignments">
+  <a href="{{ url_for('admin.history') }}">Past years</a>
+  {% for archived in recent_history %}
+    <span>{{ archived.year }}: {{ 'confirmed' if archived.confidence == 'confirmed' else 'reconstructed / partial' }}</span>
+  {% endfor %}
+</nav>
+
 <!-- Lifecycle Action Cards -->
 {% if not is_published and not assignments %}
-<!-- State 1: Unassigned - Prepare Official Assignments -->
-<div class="card" style="border: 1px solid var(--color-primary); margin-bottom: 24px;">
-  <div class="card-header">
-    <div>
-      <h2 class="card-title">Prepare assignments</h2>
-      <p class="card-subtitle">Keep the matches secret until you release them. No emails are sent yet.</p>
-    </div>
+<!-- Next action: configuration is intentionally tucked below family activity -->
+<section class="card ui-next-step" aria-label="Current exchange status">
+  <div>
+    <h2>{{ current_year }} assignments aren't prepared</h2>
+    <p>{{ n }} participating families. No secret pairings have been generated or sent.</p>
   </div>
-
-  <form method="POST" action="{{ url_for('admin.prepare_assignments') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-    
-    <div class="ui-rule-pair">
-      <div class="ui-rule-field">
-        <strong>Avoid repeat recipients</strong>
-        <label for="prep_no_repeat">Don't give to the same family from the previous
-          <input id="prep_no_repeat" type="number" name="no_repeat_years" min="0" value="{{ no_repeat_years }}" class="form-control ui-inline-number" required> years.
-        </label>
-      </div>
-      <div class="ui-rule-field">
-        <strong>Give to everyone</strong>
-        <label for="prep_coverage_k">Each family gives to all others within every
-          <input id="prep_coverage_k" type="number" name="coverage_window_k" min="1" value="{{ coverage_window_k }}" class="form-control ui-inline-number" required> years.
-        </label>
-        <label class="ui-rule-check"><input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}> Guarantee full coverage</label>
-      </div>
-    </div>
-
-<div class="ui-method-group">
-      <label for="prep_assignment_mode" class="form-label">How should families be matched?</label>
-      <select id="prep_assignment_mode" name="assignment_mode" class="form-control" data-method-selector>
-        <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
-        <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Custom fixed rotation</option>
-        <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Random each year</option>
-        <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy shuffled cycles</option>
-      </select>
-      <div class="method-explainer" data-method-explainer aria-live="polite">
-        <p>Shuffle the order once, then repeat it. Everyone gives to everyone within each four-year window.</p>
-        <small><strong>Example:</strong> A gives to B, C, D, E, then B again.</small>
-      </div>
-    </div>
-    <details class="ui-config-drawer" data-fixed-config hidden>
-      <summary>Customize fixed rotation</summary>
-      <div class="ui-field-grid">
-        <label>Family ID order <input class="form-control" type="text" name="fixed_household_order" value="{{ fixed_household_order or active_families|map(attribute='id')|join(',') }}" placeholder="1,2,3,4,5"></label>
-        <label>Year-by-year shifts <input class="form-control" type="text" name="fixed_offset_order" value="{{ fixed_offset_order or '1,2,3,4' }}" placeholder="1,2,3,4"></label>
-      </div>
-      <p class="ui-small-note">IDs: {% for f in active_families %}{{ f.id }} = {{ f.name }}{% if not loop.last %}; {% endif %}{% endfor %}. Include each ID and shift once; a custom rotation may change future pairings.</p>
-    </details>
-    {% if not feasibility.is_feasible %}
-    <label class="ui-constraint-optin"><input type="checkbox" name="waiver" value="1"> Use the suggested feasible limits instead of the impossible settings above.</label>
-    {% endif %}
-    <button type="submit" class="btn btn-primary ui-primary-action" data-confirm="Prepare and securely store real assignments? They will remain hidden and no emails will be sent.">Prepare sealed assignments</button>
-  </form>
-</div>
+  <button type="button" class="btn btn-primary" data-open-config="official-config">Set up the draw</button>
+</section>
 
 {% elif not is_published and assignments %}
 <!-- State 2: Sealed Draft -->
@@ -603,6 +575,70 @@
   </div>
   {% endif %}
 </div>
+{% endif %}
+
+{% if not is_published and not assignments %}
+<details id="official-config" class="ui-exchange-config">
+  <summary><span><strong>Draw configuration</strong><small>Assignment rules, method and official preparation</small></span></summary>
+  <div class="ui-config-content"><!-- State 1: Unassigned - Prepare Official Assignments -->
+<div class="card" style="border: 1px solid var(--color-primary); margin-bottom: 24px;">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Prepare assignments</h2>
+      <p class="card-subtitle">Keep the matches secret until you release them. No emails are sent yet.</p>
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('admin.prepare_assignments') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    
+    <div class="ui-rule-pair">
+      <div class="ui-rule-field">
+        <strong>Avoid repeat recipients</strong>
+        <label for="prep_no_repeat">Don't give to the same family from the previous
+          <input id="prep_no_repeat" type="number" name="no_repeat_years" min="0" value="{{ no_repeat_years }}" class="form-control ui-inline-number" required> years.
+        </label>
+      </div>
+      <div class="ui-rule-field">
+        <strong>Give to everyone</strong>
+        <label for="prep_coverage_k">Each family gives to all others within every
+          <input id="prep_coverage_k" type="number" name="coverage_window_k" min="1" value="{{ coverage_window_k }}" class="form-control ui-inline-number" required> years.
+        </label>
+        <label class="ui-rule-check"><input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}> Guarantee full coverage</label>
+      </div>
+    </div>
+
+<div class="ui-method-group">
+      <label for="prep_assignment_mode" class="form-label">How should families be matched?</label>
+      <select id="prep_assignment_mode" name="assignment_mode" class="form-control" data-method-selector>
+        <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
+        <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Custom fixed rotation</option>
+        <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Random each year</option>
+        <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy shuffled cycles</option>
+      </select>
+      <div class="method-explainer" data-method-explainer aria-live="polite">
+        <p>Shuffle the order once, then repeat it. Everyone gives to everyone within each four-year window.</p>
+        <small><strong>Example:</strong> A gives to B, C, D, E, then B again.</small>
+      </div>
+    </div>
+    <details class="ui-config-drawer" data-fixed-config hidden>
+      <summary>Customize fixed rotation</summary>
+      <div class="ui-field-grid">
+        <label>Family ID order <input class="form-control" type="text" name="fixed_household_order" value="{{ fixed_household_order or active_families|map(attribute='id')|join(',') }}" placeholder="1,2,3,4,5"></label>
+        <label>Year-by-year shifts <input class="form-control" type="text" name="fixed_offset_order" value="{{ fixed_offset_order or '1,2,3,4' }}" placeholder="1,2,3,4"></label>
+      </div>
+      <p class="ui-small-note">IDs: {% for f in active_families %}{{ f.id }} = {{ f.name }}{% if not loop.last %}; {% endif %}{% endfor %}. Include each ID and shift once; a custom rotation may change future pairings.</p>
+    </details>
+    {% if not feasibility.is_feasible %}
+    <label class="ui-constraint-optin"><input type="checkbox" name="waiver" value="1"> Use the suggested feasible limits instead of the impossible settings above.</label>
+    {% endif %}
+    <button type="submit" class="btn btn-primary ui-primary-action" data-confirm="Prepare and securely store real assignments? They will remain hidden and no emails will be sent.">Prepare sealed assignments</button>
+  </form>
+</div>
+
+</div>
+</details>
 {% endif %}
 
 <!-- Advanced System Settings Collapsible Drawer -->
