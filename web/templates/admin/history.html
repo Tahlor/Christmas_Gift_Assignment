@@ -1,8 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}History & Fairness - Christmas Gift Exchange{% endblock %}
+{% block title %}History & Fairness - Christmas Gift Exchange</div>
+{% endblock %}
 
 {% block content %}
+<div id="history-shell">
 <div class="card-header">
   <div>
     <h1 style="color: var(--color-primary); font-size: 1.6rem; font-weight: 800;">Assignment History & Fairness</h1>
@@ -14,6 +16,12 @@
   </div>
 </div>
 
+
+<nav class="history-year-nav" aria-label="Jump to recorded year">
+  {% for rec in history_records %}
+    <a href="#year-{{ rec.year }}">Christmas {{ rec.year }}</a>
+  {% endfor %}
+</nav>
 <!-- Spoiler Protection Banner -->
 {% if spoilers_unlocked %}
 <div class="card" style="border-left: 4px solid var(--color-warning); background-color: var(--color-gold-subtle); margin-bottom: 20px;">
@@ -25,8 +33,9 @@
         <p style="font-size: 0.88rem; color: #78350f; margin: 0;">Historical gift pairings are currently visible for this browser session.</p>
       </div>
     </div>
-    <form method="POST" action="{{ url_for('admin.lock_spoilers') }}">
+    <form method="POST" action="{{ url_for('admin.lock_spoilers') }}" data-ajax-spoilers>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ url_for('admin.history') }}">
       <button type="submit" class="btn btn-forest btn-sm">Lock Mappings (Hide Spoilers)</button>
     </form>
   </div>
@@ -41,8 +50,9 @@
         <p style="font-size: 0.88rem; color: var(--color-text-muted); margin: 0;">Historical pairings are masked to protect past and upcoming secret Santa identities.</p>
       </div>
     </div>
-    <form method="POST" action="{{ url_for('admin.unlock_spoilers') }}">
+    <form method="POST" action="{{ url_for('admin.unlock_spoilers') }}" data-ajax-spoilers>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ url_for('admin.history') }}">
       <button type="submit" class="btn btn-secondary btn-sm" data-confirm="Reveal historical recipient pairings for this session?">Unlock History Pairings</button>
     </form>
   </div>
@@ -128,10 +138,10 @@
 
   {% if history_records %}
     {% for rec in history_records %}
-    <div style="margin-bottom: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden;">
+    <div id="year-{{ rec.year }}" class="history-year-card" style="margin-bottom: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; scroll-margin-top: 16px;">
       <div style="background-color: #faf9f5; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--color-border); flex-wrap: wrap; gap: 8px;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <h3 style="color: var(--color-primary); font-size: 1.1rem; font-weight: 700; margin: 0;">Christmas {{ rec.year }}</h3>
+          <h3 style="color: var(--color-primary); font-size: 1.1rem; font-weight: 700; margin: 0;"><a href="#year-{{ rec.year }}" class="history-year-anchor" title="Link to Christmas {{ rec.year }}">Christmas {{ rec.year }}</a></h3>
           {% if rec.provenance == 'manual' %}
           <span class="badge" style="background-color: #fef3c7; color: #92400e;">Manual</span>
           {% else %}
