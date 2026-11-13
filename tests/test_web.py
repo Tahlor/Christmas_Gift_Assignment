@@ -1663,3 +1663,59 @@ def test_explicit_christmas_logout_not_immediately_undone_by_shared_sso(
     response = client.get("/christmas/admin/sso?state=" + state)
     assert response.status_code == 302
     assert client.get("/christmas/admin").status_code == 200
+
+
+
+def test_accepted_2024_reconstruction_counts_as_history_but_keeps_provenance(
+    app, client
+):
+    """User-accepted exact legacy replay is included in future no-repeat rules."""
+    from web.db import get_db
+
+    with app.app_context():
+        ids = {
+            name: create_family(name, name.lower() + "@example.test")
+            for name in ("James", "Erik", "Taylor", "Doug", "Maria")
+        }
+        reconstructed = [
+            (ids["James"], ids["Taylor"]),
+            (ids["Erik"], ids["Maria"]),
+            (ids["Taylor"], ids["Erik"]),
+            (ids["Doug"], ids["James"]),
+            (ids["Maria"], ids["Doug"]),
+        ]
+        later = [
+            (ids["James"], ids["Maria"]),
+            (ids["Erik"], ids["Doug"]),
+            (ids["Taylor"], ids["Erik"]),
+            (ids["Doug"], ids["James"]),
+            (ids["Maria"], ids["Taylor"]),
+        ]
+        save_manual_history_for_year(
+            2024, reconstructed, confidence="confirmed",
+            notes="Accepted seeded reconstruction from exact original algorithm; "
+                  "one individual assignment corroborated by a 2024 email.",
+        )
+        save_manual_history_for_year(
+            2025, later, confidence="confirmed",
+            notes="Confirmed organizer-provided assignments.",
+        )
+        summary = get_historical_years_summary()
+        assert len(summary) == 2
+        assert summary[1]["year"] == 2024
+        assert summary[1]["confidence"] == "confirmed"
+        assert summary[1]["confirmed_pairings"] == 5
+        assert "Accepted seeded reconstruction" in summary[1]["notes"]
+
+        forbidden = get_recent_history_disallowed(list(ids.values()), 2026, 2)
+        assert ids["Erik"] in forbidden[ids["Taylor"]]
+        assert ids["James"] in forbidden[ids["Doug"]]
+
+    login_admin(client)
+    history = client.get("/christmas/admin/history")
+    assert history.status_code == 200
+    assert b"Accepted reconstruction" in history.data
+    assert b"2 consecutive repeat(s)" in history.data
+    organizer = client.get("/christmas/admin/dashboard?mode=official")
+    assert organizer.status_code == 200
+    assert b"2024: accepted reconstruction" in organizer.data
