@@ -370,8 +370,12 @@ def unlock_spoilers():
     """Temporarily unlock spoiler protection for the current session."""
     session["spoilers_unlocked"] = True
     flash("Spoiler protection unlocked for this session. Mappings are now visible.", "warning")
-    next_url = request.form.get("next") or request.referrer or url_for("admin.dashboard")
-    return redirect(next_url)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return {"ok": True, "spoilers_unlocked": session["spoilers_unlocked"]}
+    # Only allow known local destinations, never arbitrary referrers or URLs.
+    return_to = request.form.get("return_to", "")
+    allowed_paths = {url_for("admin.history"), url_for("admin.dashboard")}
+    return redirect(return_to if return_to in allowed_paths else url_for("admin.dashboard"))
 
 
 @admin_bp.route("/admin/spoilers/lock", methods=["POST"])
@@ -380,8 +384,12 @@ def lock_spoilers():
     """Lock spoiler protection and mask assignments."""
     session["spoilers_unlocked"] = False
     flash("Spoiler protection enabled. Assignments and pairings are now masked.", "info")
-    next_url = request.form.get("next") or request.referrer or url_for("admin.dashboard")
-    return redirect(next_url)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return {"ok": True, "spoilers_unlocked": session["spoilers_unlocked"]}
+    # Only allow known local destinations, never arbitrary referrers or URLs.
+    return_to = request.form.get("return_to", "")
+    allowed_paths = {url_for("admin.history"), url_for("admin.dashboard")}
+    return redirect(return_to if return_to in allowed_paths else url_for("admin.dashboard"))
 
 
 @admin_bp.route("/admin/settings/seed", methods=["POST"])
