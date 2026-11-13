@@ -321,7 +321,7 @@
 <nav class="ui-history-strip" aria-label="Historical assignments">
   <a href="{{ url_for('admin.history') }}">Past years</a>
   {% for archived in recent_history %}
-    <span>{{ archived.year }}: {{ 'confirmed' if archived.confidence == 'confirmed' else 'reconstructed / partial' }}</span>
+    <span>{{ archived.year }}: {{ 'accepted reconstruction' if archived.notes and archived.notes.startswith('Accepted seeded reconstruction') else ('confirmed' if archived.confidence == 'confirmed' else 'reconstructed / partial') }}</span>
   {% endfor %}
 </nav>
 
