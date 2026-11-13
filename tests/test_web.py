@@ -1522,3 +1522,144 @@ def test_organizer_leads_with_next_action_and_hides_configuration_below_family_a
     assert '<details id="test-config"' in html
     js = client.get("/christmas/static/js/app.js")
     assert b"[data-open-config]" in js.data
+
+
+
+def test_existing_valid_universal_sso_cookie_automatically_opens_organizer(
+    client, monkeypatch
+):
+    """No separate SSO click when the user already signed into the central hub."""
+    from web import sso_auth
+
+    monkeypatch.setenv("CHRISTMAS_ADMIN_SSO_USERS", "owner@example.test")
+    calls = []
+
+    class Accepted:
+        status = 204
+        headers = {"X-Auth-Request-User": "owner@example.test"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    def fake_auth(req, timeout):
+        calls.append((req.full_url, req.headers))
+        assert req.headers.get("Cookie") == "universal_sso_token=valid.jwt.signature"
+        assert req.headers.get("X-original-uri") == "/hub/"
+        return Accepted()
+
+    monkeypatch.setattr(sso_auth.urllib.request, "urlopen", fake_auth)
+    client.set_cookie("universal_sso_token", "valid.jwt.signature")
+
+    organizer = client.get("/christmas/admin")
+    assert organizer.status_code == 200
+    assert b"Gift exchange" in organizer.data
+    assert len(calls) == 1
+    with client.session_transaction() as sess:
+        assert sess.get("is_admin") is True
+        assert sess.get("sso_user") == "owner@example.test"
+
+    # Local session now handles navigation without another network auth lookup.
+    again = client.get("/christmas/admin/history")
+    assert again.status_code == 200
+    assert len(calls) == 1
+
+
+def test_sso_auto_login_on_login_page_without_click(client, monkeypatch):
+    from web import sso_auth
+
+    monkeypatch.setenv("CHRISTMAS_ADMIN_SSO_USERS", "owner@example.test")
+
+    class Accepted:
+        status = 204
+        headers = {"X-Auth-Request-User": "owner@example.test"}
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+
+    monkeypatch.setattr(
+        sso_auth.urllib.request, "urlopen", lambda *a, **k: Accepted()
+    )
+    client.set_cookie("universal_sso_token", "valid.jwt.signature")
+    r = client.get("/christmas/admin/login")
+    assert r.status_code == 302
+    assert "/christmas/admin" in r.location
+    assert client.get(r.location).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "response_status, identity",
+    [(204, "not-allowed@example.test"), (401, "owner@example.test"),
+     (403, "owner@example.test")],
+)
+def test_sso_auto_login_denies_unauthorized_or_invalid_cookie(
+    client, monkeypatch, response_status, identity
+):
+    from web import sso_auth
+
+    monkeypatch.setenv("CHRISTMAS_ADMIN_SSO_USERS", "owner@example.test")
+    class Result:
+        status = response_status
+        headers = {"X-Auth-Request-User": identity}
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+    monkeypatch.setattr(
+        sso_auth.urllib.request, "urlopen", lambda *a, **k: Result()
+    )
+    client.set_cookie("universal_sso_token", "valid.jwt.signature")
+    res = client.get("/christmas/admin")
+    assert res.status_code == 302
+    assert "/christmas/admin/login" in res.location
+    with client.session_transaction() as sess:
+        assert not sess.get("is_admin")
+
+
+def test_sso_never_trusts_client_supplied_user_header(client, monkeypatch):
+    from web import sso_auth
+
+    monkeypatch.setenv("CHRISTMAS_ADMIN_SSO_USERS", "owner@example.test")
+    def must_not_call(*_a, **_kw):
+        raise AssertionError("Never verify a missing SSO cookie")
+    monkeypatch.setattr(sso_auth.urllib.request, "urlopen", must_not_call)
+    res = client.get(
+        "/christmas/admin",
+        headers={"X-Auth-Request-User": "owner@example.test"},
+    )
+    assert res.status_code == 302
+    assert "/login" in res.location
+
+
+def test_explicit_christmas_logout_not_immediately_undone_by_shared_sso(
+    client, monkeypatch
+):
+    from web import sso_auth
+
+    monkeypatch.setenv("CHRISTMAS_ADMIN_SSO_USERS", "owner@example.test")
+    class Accepted:
+        status = 204
+        headers = {"X-Auth-Request-User": "owner@example.test"}
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+
+    monkeypatch.setattr(
+        sso_auth.urllib.request, "urlopen", lambda *a, **k: Accepted()
+    )
+    client.set_cookie("universal_sso_token", "valid.jwt.signature")
+    assert client.get("/christmas/admin").status_code == 200
+    logout = client.post(
+        "/christmas/admin/logout",
+        data={"csrf_token": get_csrf(client)},
+    )
+    assert logout.status_code == 302
+    assert client.get("/christmas/admin/login").status_code == 200
+    assert client.get("/christmas/admin").status_code == 302
+    with client.session_transaction() as sess:
+        assert sess.get("skip_sso_auto") is True
+        assert not sess.get("is_admin")
+
+    # Explicit choice to log back in using SSO still works.
+    state = get_csrf(client)
+    response = client.get("/christmas/admin/sso?state=" + state)
+    assert response.status_code == 302
+    assert client.get("/christmas/admin").status_code == 200
