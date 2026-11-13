@@ -985,3 +985,47 @@ details.settings-drawer summary:hover {
 }
 
 .ui-method-conflict { margin: 8px 0 0 !important; padding-top: 7px; border-top: 1px solid #ead6af; font-weight: 650; font-size: .81rem; color: #8f5d17; }
+
+
+/* Organizer V5: show current work first, keep rare configuration at bottom. */
+.ui-next-step {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 14px; border: 1px solid #d5e3d7; background: #f8fbf8;
+  margin-bottom: 14px !important; padding: 16px 18px;
+}
+.ui-next-step h2 { font-size: 1.05rem; color: var(--color-primary); margin: 0 0 4px; }
+.ui-next-step p { color: var(--color-text-muted); font-size: .85rem; margin: 0; line-height: 1.4; }
+.ui-next-step .btn { flex-shrink: 0; white-space: normal; }
+.ui-history-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 10px 1px; margin-bottom: 12px; font-size: .81rem;
+  color: var(--color-text-muted);
+}
+.ui-history-strip a { font-weight: 700; color: var(--color-primary); text-decoration: underline; text-underline-offset: 2px; }
+.ui-history-strip span { border-radius: 5px; background: #f4f5f2; padding: 3px 7px; }
+.ui-exchange-config {
+  margin: 18px 0 12px;
+  border: 1px solid var(--color-border); border-radius: 10px; background: white;
+  scroll-margin-top: 18px;
+}
+.ui-exchange-config > summary {
+  cursor: pointer; padding: 16px 17px; color: var(--color-primary);
+  list-style-position: inside;
+}
+.ui-exchange-config > summary > span { display: inline-flex; flex-direction: column; gap: 2px; margin-left: 6px; vertical-align: middle; }
+.ui-exchange-config > summary strong { font-size: .95rem; }
+.ui-exchange-config > summary small { font-size: .79rem; font-weight: 400; color: var(--color-text-muted); }
+.ui-exchange-config[open] > summary { border-bottom: 1px solid var(--color-border-subtle); }
+.ui-config-content { padding: 13px 13px 1px; }
+.ui-config-content > .card { box-shadow: none; margin: 0 !important; border: none !important; padding: 4px !important; }
+.ui-config-content .card-header { margin-bottom: 12px; }
+@media (max-width: 700px) {
+  .ui-next-step { flex-direction: column; align-items: stretch; padding: 13px !important; }
+  .ui-next-step .btn { width: 100%; margin-top: 3px; min-height: 43px; }
+  .ui-history-strip { align-items: flex-start; gap: 7px; font-size: .78rem; }
+  .ui-exchange-config { margin-top: 14px; }
+  .ui-exchange-config > summary { padding: 13px 11px; }
+  .ui-config-content { padding: 10px 9px 2px; }
+}
