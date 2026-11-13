@@ -1759,7 +1759,7 @@ def test_history_spoiler_toggle_stays_on_history_and_supports_ajax(client):
               "return_to": "https://attacker.invalid/steal"},
     )
     assert invalid.status_code == 302
-    assert invalid.location.endswith("/christmas/admin")
+    assert invalid.location.endswith("/christmas/admin/dashboard")
 
 
 def test_historical_years_have_shareable_fragment_links(app, client):
