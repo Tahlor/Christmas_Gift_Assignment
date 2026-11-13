@@ -252,65 +252,6 @@
 <!-- ======================================================================= -->
 
 
-{% if pending_address_reviews %}
-<details class="ui-review-flag">
-  <summary><strong>Address confirmation needed</strong> · {% for r in pending_address_reviews %}{{ r.family_name }}{% if not loop.last %}, {% endif %}{% endfor %}</summary>
-  <div class="ui-review-content">
-    {% for rev in pending_address_reviews %}
-    <div class="ui-review-entry">
-      <div>
-        <strong>{{ rev.family_name }}</strong> · Check by {{ rev.review_due_date }}
-        <p>{{ rev.admin_note }}</p>
-      </div>
-      <form method="POST" action="{{ url_for('admin.mark_address_review', family_id=rev.family_id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="btn btn-secondary btn-sm" type="submit" data-confirm="Mark address manually verified?">Confirm reviewed</button>
-      </form>
-    </div>
-    {% endfor %}
-  </div>
-</details>
-{% endif %}
-
-{% if spoilers_unlocked %}
-<div class="ui-alert ui-warning">
-  <span><strong>Pairings visible.</strong> You unlocked the official results.</span>
-  <form method="POST" action="{{ url_for('admin.lock_spoilers') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-secondary btn-sm" type="submit">Hide pairings</button>
-  </form>
-</div>
-{% else %}
-<details class="ui-config-drawer ui-privacy-drawer">
-  <summary>🔒 Spoiler Protection is ACTIVE — official pairings are Hidden</summary>
-  <p class="ui-small-note">You can manage the exchange without seeing who gives to whom.</p>
-  <form method="POST" action="{{ url_for('admin.unlock_spoilers') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn btn-secondary btn-sm" data-confirm="Reveal all official giver-recipient pairings? This will spoil the surprise.">Show official pairings (spoiler warning)</button>
-  </form>
-</details>
-{% endif %}
-{% if not feasibility.is_feasible %}
-<div class="ui-alert ui-warning" role="alert">
-  <div><strong>These rules cannot both be guaranteed.</strong> {{ feasibility.errors|join(' ') }}<div class="ui-small-note">Suggested: avoid repeats for {{ feasibility.suggested_lookback }} years; cover everyone within {{ feasibility.suggested_coverage_window }} years. You must explicitly approve changes.</div></div>
-</div>
-{% endif %}
-{% if not is_roster_stable %}
-<div class="ui-alert ui-warning">
-  <span>{{ roster_warning }}</span>
-  <form method="POST" action="{{ url_for('admin.reset_anchor') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-secondary btn-sm" type="submit" data-confirm="Reset the rotation's starting year?">Reset starting year</button>
-  </form>
-</div>
-{% endif %}
-<nav class="ui-history-strip" aria-label="Historical assignments">
-  <a href="{{ url_for('admin.history') }}">Past years</a>
-  {% for archived in recent_history %}
-    <span>{{ archived.year }}: {{ 'confirmed' if archived.confidence == 'confirmed' else 'reconstructed / partial' }}</span>
-  {% endfor %}
-</nav>
-
 <!-- Lifecycle Action Cards -->
 {% if not is_published and not assignments %}
 <!-- Next action: configuration is intentionally tucked below family activity -->
@@ -376,6 +317,67 @@
 </div>
 {% endif %}
 
+
+<nav class="ui-history-strip" aria-label="Historical assignments">
+  <a href="{{ url_for('admin.history') }}">Past years</a>
+  {% for archived in recent_history %}
+    <span>{{ archived.year }}: {{ 'confirmed' if archived.confidence == 'confirmed' else 'reconstructed / partial' }}</span>
+  {% endfor %}
+</nav>
+
+
+{% if pending_address_reviews %}
+<details class="ui-review-flag">
+  <summary><strong>Address confirmation needed</strong> · {% for r in pending_address_reviews %}{{ r.family_name }}{% if not loop.last %}, {% endif %}{% endfor %}</summary>
+  <div class="ui-review-content">
+    {% for rev in pending_address_reviews %}
+    <div class="ui-review-entry">
+      <div>
+        <strong>{{ rev.family_name }}</strong> · Check by {{ rev.review_due_date }}
+        <p>{{ rev.admin_note }}</p>
+      </div>
+      <form method="POST" action="{{ url_for('admin.mark_address_review', family_id=rev.family_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-secondary btn-sm" type="submit" data-confirm="Mark address manually verified?">Confirm reviewed</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+
+{% if spoilers_unlocked %}
+<div class="ui-alert ui-warning">
+  <span><strong>Pairings visible.</strong> You unlocked the official results.</span>
+  <form method="POST" action="{{ url_for('admin.lock_spoilers') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-secondary btn-sm" type="submit">Hide pairings</button>
+  </form>
+</div>
+{% else %}
+<details class="ui-config-drawer ui-privacy-drawer">
+  <summary>🔒 Spoiler Protection is ACTIVE — official pairings are Hidden</summary>
+  <p class="ui-small-note">You can manage the exchange without seeing who gives to whom.</p>
+  <form method="POST" action="{{ url_for('admin.unlock_spoilers') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-secondary btn-sm" data-confirm="Reveal all official giver-recipient pairings? This will spoil the surprise.">Show official pairings (spoiler warning)</button>
+  </form>
+</details>
+{% endif %}
+{% if not feasibility.is_feasible %}
+<div class="ui-alert ui-warning" role="alert">
+  <div><strong>These rules cannot both be guaranteed.</strong> {{ feasibility.errors|join(' ') }}<div class="ui-small-note">Suggested: avoid repeats for {{ feasibility.suggested_lookback }} years; cover everyone within {{ feasibility.suggested_coverage_window }} years. You must explicitly approve changes.</div></div>
+</div>
+{% endif %}
+{% if not is_roster_stable %}
+<div class="ui-alert ui-warning">
+  <span>{{ roster_warning }}</span>
+  <form method="POST" action="{{ url_for('admin.reset_anchor') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-secondary btn-sm" type="submit" data-confirm="Reset the rotation's starting year?">Reset starting year</button>
+  </form>
+</div>
+{% endif %}
 <!-- Pending Preview Section (if generated) -->
 {% if preview_assignments %}
 <div class="card" style="border: 2px solid var(--color-primary); margin-bottom: 24px;">
