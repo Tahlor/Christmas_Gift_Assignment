@@ -53,8 +53,10 @@
 <div class="card">
   <div class="card-header">
     <h2 class="card-title">📊 Coverage & Fairness Summary</h2>
-    <span class="badge badge-published">{{ analysis.total_years_recorded }} Years Recorded</span>
+    <span class="badge badge-published">{{ analysis.total_years_recorded }} Years with Confirmed Evidence</span>
   </div>
+
+  <p class="ui-small-note">Fairness totals and repeat checks count only independently confirmed pairings. Provisional reconstructed results remain visible in the historical archive, but do not establish guarantees.</p>
 
   {% if analysis.consecutive_repeats %}
   <div class="alert alert-warning" style="margin-bottom: 20px;">
@@ -137,13 +139,13 @@
           {% endif %}
 
           {% if rec.confidence == 'partial' %}
-          <span class="badge" style="background-color: #fee2e2; color: #991b1b;">Partial (Not Certified)</span>
+          <span class="badge" style="background-color: #fee2e2; color: #991b1b;">Reconstructed (partly verified)</span>
           {% else %}
           <span class="badge badge-published">Confirmed</span>
           {% endif %}
         </div>
         <div>
-          <span style="font-size: 0.85rem; color: var(--color-text-muted);">{{ rec.assignments|length }} pairings</span>
+          <span style="font-size: 0.85rem; color: var(--color-text-muted);">{{ rec.assignments|length }} pairings{% if rec.confidence == 'partial' %}; {{ rec.confirmed_pairings }} verified{% endif %}</span>
           {% if rec.published_at %}
           <span style="font-size: 0.8rem; color: var(--color-text-muted); margin-left: 8px;">({{ rec.published_at[:10] }})</span>
           {% endif %}
@@ -151,6 +153,7 @@
       </div>
 
       {% if spoilers_unlocked %}
+      {% if rec.notes %}<p class="ui-small-note" style="padding: 8px 14px;">{{ rec.notes }}</p>{% endif %}
       <div class="table-responsive" style="border: none; border-radius: 0;">
         <table class="table">
           <thead>
@@ -165,7 +168,7 @@
             <tr>
               <td style="font-weight: 600;">{{ a.giver_name }}</td>
               <td style="text-align: center; color: var(--color-accent);">🎁</td>
-              <td style="font-weight: 600; color: var(--color-primary);">{{ a.receiver_name }}</td>
+              <td style="font-weight: 600; color: var(--color-primary);">{{ a.receiver_name }}{% if a.confidence == "partial" %}<small style="display: block; color: #985f1b; font-weight: normal;">Reconstructed, not confirmed</small>{% endif %}</td>
             </tr>
             {% endfor %}
           </tbody>
