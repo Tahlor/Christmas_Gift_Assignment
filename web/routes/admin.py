@@ -1158,8 +1158,19 @@ def history():
     family_ids = [f["id"] for f in all_families]
 
     history_by_year = get_history_by_year()
-    analysis = analyze_history_coverage(family_ids, history_by_year)
     history_summary = get_historical_years_summary()
+    summary_by_year = {entry["year"]: entry for entry in history_summary}
+
+    # Statistical guarantees must use evidence-backed records, never inferred
+    # 2024 pairings merely reconstructed from the legacy random seed.
+    confirmed_history = {}
+    confirmed_rows = get_db().execute(
+        """SELECT year,giver_family_id,receiver_family_id
+           FROM assignments WHERE published=1 AND confidence='confirmed'"""
+    ).fetchall()
+    for rec in confirmed_rows:
+        confirmed_history.setdefault(rec["year"], {})[rec["giver_family_id"]] = rec["receiver_family_id"]
+    analysis = analyze_history_coverage(family_ids, confirmed_history)
 
     history_records = []
     for yr in sorted(history_by_year.keys(), reverse=True):
@@ -1169,7 +1180,9 @@ def history():
             "published": assignments[0]["published"] if assignments else 0,
             "published_at": assignments[0]["published_at"] if assignments else None,
             "provenance": assignments[0]["provenance"] if assignments else "official",
-            "confidence": assignments[0]["confidence"] if assignments else "confirmed",
+            "confidence": summary_by_year.get(yr, {}).get("confidence", "confirmed"),
+            "confirmed_pairings": summary_by_year.get(yr, {}).get("confirmed_pairings", 0),
+            "notes": summary_by_year.get(yr, {}).get("notes", ""),
             "assignments": assignments
         })
 
