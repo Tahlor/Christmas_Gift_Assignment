@@ -100,6 +100,7 @@ from web.models import (
     update_family,
     upsert_address_review,
 )
+from web.sso_auth import auto_login_from_existing_sso
 from web.security import (
     admin_required,
     check_login_rate_limit,
@@ -166,7 +167,12 @@ def admin_sso():
 @admin_bp.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     """Admin login page with constant-time password check and IP rate limiting."""
-    if session.get("is_admin"):
+    if session.get("is_admin") or (
+        request.method == "GET" and auto_login_from_existing_sso()
+    ):
+        next_url = request.args.get("next", "")
+        if next_url.startswith("/christmas/") or next_url == "/christmas":
+            return redirect(next_url)
         return redirect(url_for("admin.dashboard"))
 
     if request.method == "POST":
@@ -199,6 +205,9 @@ def admin_login():
 def admin_logout():
     """Log out administrator and clear session."""
     session.clear()
+    # Preserve an explicit local sign-out even if the global SSO cookie
+    # remains valid in the same browser.
+    session["skip_sso_auto"] = True
     flash("You have been logged out.", "info")
     return redirect(url_for("admin.admin_login"))
 
