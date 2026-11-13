@@ -1719,3 +1719,62 @@ def test_accepted_2024_reconstruction_counts_as_history_but_keeps_provenance(
     organizer = client.get("/christmas/admin/dashboard?mode=official")
     assert organizer.status_code == 200
     assert b"2024: accepted reconstruction" in organizer.data
+
+
+
+def test_history_spoiler_toggle_stays_on_history_and_supports_ajax(client):
+    """History reveal should neither jump to dashboard nor require re-navigation."""
+    login_admin(client)
+    page = client.get("/christmas/admin/history")
+    assert page.status_code == 200
+    assert b'id="history-shell"' in page.data
+    assert b'data-ajax-spoilers' in page.data
+    token = get_csrf(client)
+
+    unlock = client.post(
+        "/christmas/admin/spoilers/unlock",
+        data={"csrf_token": token, "return_to": "/christmas/admin/history"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert unlock.status_code == 200
+    assert unlock.is_json and unlock.json == {"ok": True, "spoilers_unlocked": True}
+    page = client.get("/christmas/admin/history")
+    assert b"History Pairings" not in page.data or b"Lock Mappings" in page.data
+    assert b"Lock Mappings" in page.data
+
+    lock = client.post(
+        "/christmas/admin/spoilers/lock",
+        data={"csrf_token": get_csrf(client),
+              "return_to": "/christmas/admin/history"},
+    )
+    assert lock.status_code == 302
+    assert lock.location.endswith("/christmas/admin/history")
+    assert b"Unlock History Pairings" in client.get("/christmas/admin/history").data
+
+    # Reject a malicious redirect destination: the server never follows an
+    # attacker-controlled URL after a state-changing request.
+    invalid = client.post(
+        "/christmas/admin/spoilers/unlock",
+        data={"csrf_token": get_csrf(client),
+              "return_to": "https://attacker.invalid/steal"},
+    )
+    assert invalid.status_code == 302
+    assert invalid.location.endswith("/christmas/admin")
+
+
+def test_historical_years_have_shareable_fragment_links(app, client):
+    with app.app_context():
+        families = [create_family("History link " + str(i), f"hist{i}@example.test")
+                    for i in range(3)]
+        save_manual_history_for_year(
+            2024, [(families[i], families[(i + 1) % 3]) for i in range(3)],
+            confidence="confirmed", notes="Test-only archived year."
+        )
+    login_admin(client)
+    page = client.get("/christmas/admin/history")
+    assert page.status_code == 200
+    assert b'id="year-2024"' in page.data
+    assert b'href="#year-2024"' in page.data
+    script = client.get("/christmas/static/js/app.js")
+    assert b"data-ajax-spoilers" in script.data
+    assert b"oldY = window.scrollY" in script.data
