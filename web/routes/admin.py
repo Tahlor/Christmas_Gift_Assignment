@@ -100,6 +100,15 @@ from web.models import (
     update_family,
     upsert_address_review,
 )
+from web.requests import (
+    best_random_matching,
+    choose_preferred_rotation_salt,
+    get_priorities,
+    request_count,
+    requests_are_open,
+    save_priorities,
+    valid_requests,
+)
 from web.sso_auth import auto_login_from_existing_sso
 from web.security import (
     admin_required,
@@ -319,6 +328,12 @@ def dashboard():
     is_revealed = is_guesses_revealed(current_year)
     game_scores = calculate_game_scores(current_year) if (is_published and is_revealed) else None
 
+    # Anonymous preference counts and organizer-defined priority ranks only;
+    # never send recipient selections or request ownership to the dashboard.
+    submitted_request_count = request_count(current_year)
+    request_priorities = get_priorities(current_year)
+    request_window_open = requests_are_open(current_year)
+
     # Test mode state (from session if simulation was run)
     test_sim_data = session.pop("test_sim_data", None)
 
@@ -360,8 +375,29 @@ def dashboard():
         guess_stats=guess_stats,
         is_revealed=is_revealed,
         game_scores=game_scores,
-        test_sim_data=test_sim_data
+        test_sim_data=test_sim_data,
+        submitted_request_count=submitted_request_count,
+        request_priorities=request_priorities,
+        request_window_open=request_window_open
     )
+
+
+@admin_bp.route("/admin/requests/priorities", methods=["POST"])
+@admin_required
+def update_request_priorities():
+    """Set household request priority, without viewing who requested whom."""
+    year = int(get_setting("current_year", str(datetime.now().year)))
+    families = get_all_families(active_only=True)
+    try:
+        priorities = {}
+        for family in families:
+            raw = request.form.get(f"priority_{family['id']}", "0").strip()
+            priorities[family["id"]] = int(raw)
+        save_priorities(year, priorities)
+        flash("Request priorities saved. They only affect future draws, not a sealed assignment.", "success")
+    except (ValueError, TypeError) as exc:
+        flash(f"Invalid priorities: {exc}", "error")
+    return redirect(url_for("admin.dashboard", mode="official"))
 
 
 @admin_bp.route("/admin/spoilers/unlock", methods=["POST"])
@@ -473,6 +509,9 @@ def prepare_assignments():
 
     cycle_secret = get_production_seed()
     history_disallowed = get_recent_history_disallowed(family_ids, current_year, lookback)
+    # Filter using exactly the lookback applied to this real draw, not client fields.
+    requested = valid_requests(current_year, family_ids, history_disallowed)
+    priorities = get_priorities(current_year)
 
     try:
         if mode in ("shuffled_rotation", "shuffled_repeating_rotation"):
@@ -500,9 +539,14 @@ def prepare_assignments():
                     flash("An official draw already exists, but its stable rotation salt is missing. "
                           "Refusing to silently choose a new production schedule.", "error")
                     return redirect(url_for("admin.dashboard"))
-                chosen_salt = find_boundary_safe_salt(
-                    family_ids, current_year, anchor_year, cycle_secret,
-                    history_by_year, lookback, max_candidates=10000)
+                if requested:
+                    chosen_salt = choose_preferred_rotation_salt(
+                        family_ids, current_year, anchor_year, cycle_secret,
+                        history_by_year, lookback, requested, priorities, max_candidates=10000)
+                else:
+                    chosen_salt = find_boundary_safe_salt(
+                        family_ids, current_year, anchor_year, cycle_secret,
+                        history_by_year, lookback, max_candidates=10000)
                 if chosen_salt is None:
                     flash("No shuffled rotation satisfied the historical boundary for all upcoming years "
                           f"within the {lookback}-year no-repeat limit. "
@@ -583,7 +627,10 @@ def prepare_assignments():
                 )
                 return redirect(url_for("admin.dashboard"))
         elif mode == "uniform_random":
-            mapping = uniform_random_derangement(family_ids, history_disallowed)
+            mapping = (
+                best_random_matching(family_ids, history_disallowed, requested, priorities)
+                if requested else uniform_random_derangement(family_ids, history_disallowed)
+            )
         else:
             flash(f"Unknown assignment mode: {mode}", "error")
             return redirect(url_for("admin.dashboard"))
@@ -605,7 +652,9 @@ def prepare_assignments():
                 "anchor_year": anchor_year,
                 "rotation_salt": get_setting("rotation_salt", ""),
                 "fixed_household_order": get_setting("fixed_household_order", ""),
-                "fixed_offset_order": get_setting("fixed_offset_order", "")
+                "fixed_offset_order": get_setting("fixed_offset_order", ""),
+                "request_policy": "nonbinding_priority",
+                "eligible_request_count": len(requested),
             }, sort_keys=True)
         )
         session.pop("draft_rule_config", None)
