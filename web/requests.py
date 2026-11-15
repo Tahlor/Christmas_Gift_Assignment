@@ -147,7 +147,7 @@ def best_random_matching(family_ids, history, preferences, priorities, rng=None)
     """Exact lexicographic maximum of satisfiable soft requests.
 
     Every candidate is a full hard-constrained derangement. Equal-score
-    solutions are sampled at random; an unmet request never blocks a draw.
+    solutions are sampled uniformly at random; an unmet request never blocks a draw.
     """
     givers = list(family_ids)
     n = len(givers)
@@ -166,48 +166,63 @@ def best_random_matching(family_ids, history, preferences, priorities, rng=None)
     ]
 
     @lru_cache(maxsize=None)
-    def best(index, used):
+    def optimum(index, used):
+        """Return (best achievable tier score, number of optimal completions)."""
         if index == n:
-            return zero
-        greatest = None
+            return zero, 1
+        best_score = None
+        optimal_count = 0
         for j in valid_receivers[index]:
             bit = 1 << j
             if used & bit:
                 continue
-            rest = best(index + 1, used | bit)
-            if rest is None:
+            suffix = optimum(index + 1, used | bit)
+            if suffix is None:
                 continue
-            gain = list(rest)
+            suffix_score, suffix_count = suffix
+            gain = list(suffix_score)
             giver = givers[index]
             if preferences.get(giver) == givers[j]:
                 gain[rank[priorities.get(giver, 0)]] += 1
             score = tuple(gain)
-            if greatest is None or score > greatest:
-                greatest = score
-        return greatest
+            if best_score is None or score > best_score:
+                best_score, optimal_count = score, suffix_count
+            elif score == best_score:
+                optimal_count += suffix_count
+        return (best_score, optimal_count) if best_score is not None else None
 
-    if best(0, 0) is None:
+    if optimum(0, 0) is None:
         raise AssignmentInfeasibleError(
             "No assignment satisfies the mandatory recipient restrictions."
         )
     mapping = {}
     used = 0
     for index, giver in enumerate(givers):
-        optimal = best(index, used)
-        choices = []
+        target_score, total_completions = optimum(index, used)
+        # Weight each optimal next receiver by its number of optimal suffixes.
+        # This samples *complete* equally optimal assignments uniformly, rather
+        # than introducing bias by choosing the next receiver uniformly.
+        ticket = rng.randrange(total_completions)
+        chosen = None
         for j in valid_receivers[index]:
             bit = 1 << j
             if used & bit:
                 continue
-            suffix = best(index + 1, used | bit)
+            suffix = optimum(index + 1, used | bit)
             if suffix is None:
                 continue
-            gain = list(suffix)
+            suffix_score, suffix_count = suffix
+            gain = list(suffix_score)
             if preferences.get(giver) == givers[j]:
                 gain[rank[priorities.get(giver, 0)]] += 1
-            if tuple(gain) == optimal:
-                choices.append(j)
-        chosen = rng.choice(choices)
+            if tuple(gain) != target_score:
+                continue
+            if ticket < suffix_count:
+                chosen = j
+                break
+            ticket -= suffix_count
+        if chosen is None:
+            raise AssertionError("Optimal matching sampler count mismatch")
         mapping[giver] = givers[chosen]
         used |= 1 << chosen
     return mapping
@@ -215,15 +230,16 @@ def best_random_matching(family_ids, history, preferences, priorities, rng=None)
 
 def choose_preferred_rotation_salt(family_ids, year, anchor_year, seed,
                                    history_by_year, lookback, preferences, priorities,
-                                   max_candidates=10000):
-    """Choose a boundary-safe initial rotation honoring as many requests as possible.
+                                   max_candidates=10000, rng=None):
+    """Choose a boundary-safe initial rotation maximizing preference satisfaction.
 
-    Called ONLY before a production schedule exists. Once a rotation salt has
-    been saved, subsequent years must reuse it regardless of new requests.
+    Among all highest-scoring candidate schedules, use reservoir sampling so
+    ties are broken uniformly at random, not by first candidate / family order.
+    Called ONLY before a production schedule exists; the selected salt is saved
+    for future years and never automatically changed to accommodate requests.
     """
-    champion_salt, champion_score = None, None
-    # The maximum possible count in each priority tier.
-    perfect = _score(preferences, preferences, priorities)
+    rng = rng or random.SystemRandom()
+    champion_salt, champion_score, tied_candidates = None, None, 0
     for candidate in range(max_candidates):
         salt = str(candidate)
         schedule = lambda target_year: shuffled_repeating_rotation(
@@ -232,7 +248,9 @@ def choose_preferred_rotation_salt(family_ids, year, anchor_year, seed,
             continue
         score = _score(schedule(year), preferences, priorities)
         if champion_score is None or score > champion_score:
-            champion_salt, champion_score = salt, score
-            if score == perfect:
-                break
+            champion_salt, champion_score, tied_candidates = salt, score, 1
+        elif score == champion_score:
+            tied_candidates += 1
+            if rng.randrange(tied_candidates) == 0:
+                champion_salt = salt
     return champion_salt
