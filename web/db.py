@@ -116,6 +116,25 @@ CREATE TABLE IF NOT EXISTS historical_years (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS assignment_requests (
+    year INTEGER NOT NULL,
+    giver_family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    recipient_family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (year, giver_family_id),
+    CHECK (giver_family_id != recipient_family_id)
+);
+
+CREATE TABLE IF NOT EXISTS request_priorities (
+    year INTEGER NOT NULL,
+    family_id INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+    priority INTEGER NOT NULL DEFAULT 0 CHECK (priority BETWEEN 0 AND 100),
+    PRIMARY KEY (year, family_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_assignment_requests_year ON assignment_requests(year);
+
 CREATE TABLE IF NOT EXISTS guess_ballots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     year INTEGER NOT NULL,
