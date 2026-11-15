@@ -142,7 +142,7 @@ The organizer's **Private recipient requests** panel displays only the overall
 request count and the priority configuration by household. It does **not** show
 who submitted a request or which recipients were chosen. A smaller positive
 priority number ranks ahead of a larger number; unranked households have normal
-priority. Ties in the same tier are optimized for maximum overall satisfaction.
+priority. For each tied priority tier, the solver maximizes the number of satisfied requests. Once the best possible satisfaction counts for every tier are fixed, it breaks ties randomly: uniformly across equally good complete draws for the random method, and by unbiased reservoir sampling across equally good eligible candidate schedules for a newly established rotation.
 
 Matching always treats requests as **soft preferences**:
 - For a new shuffled repeating rotation with no saved schedule, the system
