@@ -31,6 +31,9 @@ from web.models import (
     update_family_contact_and_notes,
 )
 
+from web.requests import has_request, request_choices, requests_are_open, save_request
+
+
 family_bp = Blueprint("family", __name__, url_prefix="/christmas")
 
 
@@ -81,6 +84,13 @@ def portal(token: str):
         or (get_setting(f"guessing_game_enabled_{current_year}") == "1")
     )
 
+    # Private, optional recipient requests close when a real draft is sealed.
+    request_open = bool(family["active"] and requests_are_open(current_year))
+    request_eligible, request_excluded = (
+        request_choices(current_year, family["id"]) if request_open else ([], [])
+    )
+    request_submitted = has_request(current_year, family["id"])
+
     # Own wishlist
     own_wishlist_text = get_wishlist_as_text(family["id"])
     own_wishlist_items = get_family_wishlist(family["id"])
@@ -101,8 +111,40 @@ def portal(token: str):
         game_results=game_results,
         show_game=show_game,
         is_confirmed=is_confirmed,
+        request_open=request_open,
+        request_eligible=request_eligible,
+        request_excluded=request_excluded,
+        request_submitted=request_submitted,
         assignment_confirmed_at=activity["assignment_confirmed_at"] if activity else None
     )
+
+
+@family_bp.route("/f/<token>/request", methods=["POST"])
+@family_bp.route("/family/<token>/request", methods=["POST"])
+def submit_recipient_request(token: str):
+    """Private request: never accept a giver ID from the submitted form."""
+    family = get_family_by_token(token)
+    if not family:
+        abort(404)
+    year = int(get_setting("current_year", str(datetime.now().year)))
+    if request.form.get("action") == "withdraw":
+        recipient_id = None
+    else:
+        raw = request.form.get("recipient_id", "").strip()
+        if not raw.isdigit():
+            flash("Choose an eligible recipient, or withdraw your request.", "error")
+            return redirect(url_for("family.portal", token=token))
+        recipient_id = int(raw)
+    try:
+        save_request(year, family["id"], recipient_id)
+        flash(
+            "Your private request was removed." if recipient_id is None else
+            "Your private request was saved. It is optional and not guaranteed.",
+            "success"
+        )
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("family.portal", token=token))
 
 
 @family_bp.route("/f/<token>/confirm-receipt", methods=["POST"])
