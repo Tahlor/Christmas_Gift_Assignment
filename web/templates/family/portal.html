@@ -137,15 +137,15 @@
     </p>
   </form>
   {% if request_excluded %}
-  <details style="margin-top: 10px;">
-    <summary style="cursor: pointer; font-weight: 600;">Who can't I request? ({{ request_excluded|length }})</summary>
-    <ul style="margin: 8px 0 0; font-size: 0.9rem;">
+  <div style="margin-top: 10px;">
+    <strong style="font-size: 0.9rem;">Not eligible to request:</strong>
+    <span style="font-size: 0.9rem;">
       {% for target in request_excluded %}
-      <li><strong>{{ target.name }}</strong> — {{ target.reason }}</li>
+      {{ target.name }} ({{ target.reason|lower }}){% if not loop.last %}; {% endif %}
       {% endfor %}
-    </ul>
-    <p class="form-hint">These are the general historical exclusions. Other rotation requirements may further limit which requests can be honored; planned secret pairings are never displayed here.</p>
-  </details>
+    </span>
+    <p class="form-hint">Other rotation requirements may further limit which requests can be honored; planned secret pairings are never displayed here.</p>
+  </div>
   {% endif %}
 </div>
 {% elif not published and family.active %}
