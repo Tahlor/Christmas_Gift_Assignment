@@ -51,7 +51,7 @@ def test_private_form_and_withdrawal(app, roster):
     response = client.get(f"/christmas/f/{token}")
     assert response.status_code == 200
     assert b"Request a Family to Give To" in response.data
-    assert b"Your own household" in response.data
+    assert b"your own household" in response.data
 
     # Requests are bound to the access token, not a forged giver field.
     response = client.post(
