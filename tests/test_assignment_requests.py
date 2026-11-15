@@ -1,5 +1,7 @@
 """Private recipient requests never override the existing assignment guarantees."""
 
+import random
+
 import pytest
 
 from web import create_app
@@ -109,6 +111,63 @@ def test_priority_optimizer_respects_constraints():
     mapping = best_random_matching(ids, {2: {3}}, prefs, priorities)
     assert mapping[2] != 3
     assert mapping[1] == 3
+
+
+def test_equal_priority_maximizes_count_then_uniformly_breaks_ties():
+    # Six equally optimal complete derangements exist. Their first-giver
+    # choices have 1, 3, and 2 completions respectively; naive uniform
+    # choice among next receivers is biased. All six should be equiprobable.
+    ids = [1, 2, 3, 4]
+    preferences = {1: 3, 2: 3}
+    priorities = {1: 1, 2: 1}
+    rng = random.Random(194)
+    counts = {}
+    for _ in range(1200):
+        mapping = best_random_matching(ids, {}, preferences, priorities, rng=rng)
+        assert sum(mapping.get(g) == r for g, r in preferences.items()) == 1
+        assert all(g != r for g, r in mapping.items())
+        assert len(set(mapping.values())) == len(ids)
+        key = tuple(mapping[g] for g in ids)
+        counts[key] = counts.get(key, 0) + 1
+
+    assert len(counts) == 6
+    # Uniform draws should yield about 200 of each; a biased strategy
+    # that chooses next recipients equally gives ~400 for one outcome.
+    assert all(145 <= count <= 255 for count in counts.values())
+
+
+def test_rotation_breaks_equally_optimal_salts_randomly():
+    ids = [1, 2, 3, 4, 5]
+    year, anchor, seed = 2026, 2026, "test-seed"
+    preferences = {1: 3, 2: 3}
+    priorities = {1: 1, 2: 1}
+    # One of two same-tier conflicting requests may be satisfied, never both.
+    valid = []
+    for candidate in range(120):
+        mapping = shuffled_repeating_rotation(ids, year, anchor, seed, str(candidate))
+        score = sum(mapping.get(g) == r for g, r in preferences.items())
+        if score == 1:
+            valid.append(str(candidate))
+    assert len(valid) >= 2
+
+    class AlwaysFirst:
+        def randrange(self, n):
+            return 0  # Reservoir replaces incumbent on every tie.
+
+    class AlwaysLast:
+        def randrange(self, n):
+            return n - 1  # Reservoir keeps incumbent on every tie.
+
+    kwargs = dict(
+        family_ids=ids, year=year, anchor_year=anchor, seed=seed,
+        history_by_year={}, lookback=3, preferences=preferences,
+        priorities=priorities, max_candidates=120
+    )
+    first = choose_preferred_rotation_salt(**kwargs, rng=AlwaysLast())
+    last = choose_preferred_rotation_salt(**kwargs, rng=AlwaysFirst())
+    assert first == valid[0]
+    assert last == valid[-1]
+    assert first != last
 
 
 def test_rotation_preference_only_chooses_valid_initial_salt():
