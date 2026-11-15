@@ -128,3 +128,43 @@ python3 -m web.app --host 127.0.0.1 --port 13046
 The 2026 V2 adds a separate Test Lab (independent seed and no writes), a single stored production seed, unlimited nonnegative historical lookback, manual-year history import, spoiler-protected organizer views and exports, sealed assignment preparation and separate family release/send actions, and a private family guessing game with organizer-controlled answer reveal.
 
 See [V2_DESIGN.md](../V2_DESIGN.md) for the full UX proposal, mathematical guarantees, migration notes, and historical evidence status. Live family contact information, private links, and actual assignment records remain outside the repository.
+
+## Optional private recipient requests
+
+Before the current year's official assignment is prepared, each active household can
+use its existing private family link to request one preferred recipient. The form
+shows the households excluded by the self-gift and confirmed historical no-repeat
+rules, with reasons. Replacing a request overwrites the previous choice; withdrawal
+removes it. Requests close as soon as a sealed draft exists, and do not affect
+published assignments or the original command-line assigner.
+
+The organizer's **Private recipient requests** panel displays only the overall
+request count and the priority configuration by household. It does **not** show
+who submitted a request or which recipients were chosen. A smaller positive
+priority number ranks ahead of a larger number; unranked households have normal
+priority. Ties in the same tier are optimized for maximum overall satisfaction.
+
+Matching always treats requests as **soft preferences**:
+- For a new shuffled repeating rotation with no saved schedule, the system
+  searches deterministic candidate salts, enforcing the *entire* historical
+  transition boundary before maximizing requests by priority tier. It persists
+  the selected salt, so future years retain rolling coverage and no-repeat
+  guarantees. A saved rotation is never changed to accommodate requests.
+- For a uniform random draw, an exact constrained matching maximizes requests
+  lexicographically by priority tier, using only valid one-to-one, non-self,
+  non-repeated matches. With no requests, the existing uniform sampler is used.
+- Custom/predictable/legacy schedules are not modified: requests can only be
+  fulfilled if the existing schedule independently produces the requested pair.
+
+**Privacy scope:** recipient choices and request ownership never enter the
+organizer web dashboard or the family guessing game. Requests are associated
+with household IDs in the server's private SQLite database to enforce rules
+and priorities; they are *not cryptographically anonymous* to administrators
+with direct database access, and private family links should remain secret.
+The portal deliberately does not echo a submitted selection on subsequent
+page loads. Avoid promising that any request will be satisfied.
+
+The request/priority tables are added via idempotent schema initialization;
+deploy using the existing service restart/deployment procedure. No production
+roster, seed, draft or sent messages are modified by this source update.
+Tests: python -m pytest -q tests (also run automatically in GitHub Actions).
