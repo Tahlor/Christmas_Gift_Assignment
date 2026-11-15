@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 import random
 
-from web.assignment import AssignmentInfeasibleError, shuffled_repeating_rotation
+from web.assignment import AssignmentInfeasibleError, shuffled_repeating_rotation, uniform_random_derangement
 from web.continuity import find_boundary_conflicts
 from web.db import get_db
 from web.models import get_all_families, get_recent_history_disallowed, get_setting
@@ -152,9 +152,8 @@ def best_random_matching(family_ids, history, preferences, priorities, rng=None)
     givers = list(family_ids)
     n = len(givers)
     if n > 18:
-        raise AssignmentInfeasibleError(
-            "Too many households for exact preference optimization; use the standard random draw."
-        )
+        # Soft preferences must never make an otherwise possible draw fail.
+        return uniform_random_derangement(givers, history, rng=rng)
     rng = rng or random.SystemRandom()
     levels = sorted(set(priorities.get(g, 0) for g in preferences),
                     key=lambda p: (p == 0, p))
@@ -223,10 +222,8 @@ def choose_preferred_rotation_salt(family_ids, year, anchor_year, seed,
     been saved, subsequent years must reuse it regardless of new requests.
     """
     champion_salt, champion_score = None, None
-    perfect = _score(preferences, preferences, priorities) if not preferences else None
     # The maximum possible count in each priority tier.
-    if preferences:
-        perfect = _score({g: r for g, r in preferences.items()}, preferences, priorities)
+    perfect = _score(preferences, preferences, priorities)
     for candidate in range(max_candidates):
         salt = str(candidate)
         schedule = lambda target_year: shuffled_repeating_rotation(
