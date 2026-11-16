@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Communications — Christmas Gift Exchange{% endblock %}
+{% block content %}
+<div class="comm-head">
+  <div>
+    <p class="organizer-eyebrow">CHRISTMAS {{ current_year }}</p>
+    <h1>Communications</h1>
+    <p class="card-subtitle">Compose, preview and send family emails using private mail-merge fields. Nothing sends automatically.</p>
+  </div>
+  <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary btn-sm">Back to exchange</a>
+</div>
+
+{% if not smtp_available %}
+<div class="alert alert-warning" role="status">
+  <strong>Sending not configured.</strong> You can design templates and preview them now, but sending requires an SMTP host and sender address on Archimedes. No welcome or assignment messages have been sent by this screen.
+</div>
+{% endif %}
+
+<div class="comm-layout">
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">1. Compose a template</h2>
+        <p class="card-subtitle">Save once, reuse whenever you need to send a reminder.</p>
+      </div>
+    </div>
+    <div class="comm-template-switch">
+      <label for="comm-switch" class="form-label">Saved templates</label>
+      <select id="comm-switch" class="form-control">
+        {% for template in templates %}
+        <option value="{{ url_for('communications.page', template=template.id) }}" {{ 'selected' if selected_template and template.id == selected_template.id else '' }}>
+          {{ template.name }}
+        </option>
+        {% endfor %}
+        <option value="{{ url_for('communications.page', new=1) }}" {{ 'selected' if not selected_template else '' }}>+ Create new template</option>
+      </select>
+    </div>
+    <form id="comm-editor" method="POST" action="{{ url_for('communications.save_message_template') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="template_id" value="{{ selected_template.id if selected_template else '' }}">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="comm-name" class="form-label">Template name</label>
+          <input id="comm-name" name="name" class="form-control" maxlength="100" required
+                 value="{{ selected_template.name if selected_template else '' }}" placeholder="e.g. December reminder">
+        </div>
+        <div class="form-group">
+          <label for="comm-kind" class="form-label">Purpose</label>
+          <select id="comm-kind" name="kind" class="form-control">
+            {% for kind, label in [('welcome','Welcome / Requests'),('assignment','Assignment'),('reminder','Reminder'),('custom','Other')] %}
+            <option value="{{ kind }}" {{ 'selected' if selected_template and selected_template.kind == kind else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <label class="form-label">Merge fields</label>
+      <p class="form-hint" style="margin-bottom:9px">Click a field to insert at the cursor, or drag it into the subject or message. These use the selected household and {{ current_year }}.</p>
+      <div class="comm-fields" aria-label="Available merge fields">
+        {% for label, token, requires_assignment in placeholders %}
+        <button type="button" class="comm-field" draggable="true" data-merge-token="{{ token }}" title="Insert {{ label }}: {{ token }}">
+          {{ label }}{% if requires_assignment %}<span aria-label="requires released assignment"> 🎁</span>{% endif %}
+        </button>
+        {% endfor %}
+      </div>
+      <p class="form-hint">🎁 Assignment fields require the official assignments to be released. Links and household fields work before the draw.</p>
+
+      <div class="form-group">
+        <label for="comm-subject" class="form-label">Email subject</label>
+        <input id="comm-subject" name="subject" class="form-control comm-merge-target"
+               maxlength="180" required value="{{ selected_template.subject if selected_template else '' }}"
+               placeholder="Christmas {{ current_year }} gift exchange">
+      </div>
+      <div class="form-group">
+        <label for="comm-body" class="form-label">Email body</label>
+        <textarea id="comm-body" name="body" rows="15" maxlength="16000"
+                  class="form-control comm-merge-target" required placeholder="Hi {{ '{{family_name}}' }}, ...">{{ selected_template.body if selected_template else '' }}</textarea>
+      </div>
+      <div class="comm-actions">
+        <button type="submit" class="btn btn-primary">Save template</button>
+        <a href="{{ url_for('communications.page', new=1) }}" class="btn btn-secondary">New template</a>
+        <span class="form-hint">Save edits before sending. Preview can use unsaved edits.</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="comm-side">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">2. Preview for a household</h2>
+          <p class="card-subtitle">Your default is preselected; choose any family to inspect the personalized message.</p>
+        </div>
+      </div>
+      <form id="comm-preview-default" method="POST" action="{{ url_for('communications.save_preview_family') }}" class="comm-preview-default">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="comm-preview-family" class="form-label">Preview as</label>
+        <select id="comm-preview-family" name="preview_family_id" class="form-control">
+          {% for family in families %}
+          <option value="{{ family.id }}" {{ 'selected' if preview_family_id == family.id else '' }}>{{ family.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary btn-sm">Save as default</button>
+      </form>
+      <button type="button" id="comm-preview-button" class="btn btn-primary" style="margin-top:12px">Preview email</button>
+      <p id="comm-preview-error" class="form-hint" role="alert"></p>
+      <div id="comm-preview-card" class="comm-message-preview" hidden aria-live="polite">
+        <div class="comm-envelope"><small>To</small><span id="comm-preview-to"></span></div>
+        <div class="comm-envelope"><small>Subject</small><strong id="comm-preview-subject"></strong></div>
+        <div class="comm-mail-paper">
+          <h3>🎄 Family Christmas Exchange</h3>
+          <div id="comm-preview-body" class="comm-message-body"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">3. Send saved template</h2>
+          <p class="card-subtitle">Explicit approval required. Messages are personalized for each selected household.</p>
+        </div>
+      </div>
+      {% if selected_template %}
+      <form method="POST" action="{{ url_for('communications.send') }}" id="comm-send-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="dispatch_id" value="{{ dispatch_id }}">
+        <input type="hidden" name="template_id" value="{{ selected_template.id }}">
+        <p class="form-hint">Saved template: <strong>{{ selected_template.name }}</strong>. Unsaved editor changes will not be included.</p>
+        <fieldset class="comm-scope">
+          <legend class="form-label">Recipients</legend>
+          <label><input type="radio" name="scope" value="one" checked> One household</label>
+          <label><input type="radio" name="scope" value="all"> Every participating household ({{ families|length }})</label>
+        </fieldset>
+        <div class="form-group" id="comm-send-one">
+          <label for="comm-send-family" class="form-label">Household</label>
+          <select id="comm-send-family" name="family_id" class="form-control">
+            {% for family in families %}
+            <option value="{{ family.id }}" {{ 'selected' if preview_family_id == family.id else '' }}>{{ family.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="comm-confirm" class="form-label">Type SEND to authorize this dispatch</label>
+          <input id="comm-confirm" class="form-control" name="confirm_send" autocomplete="off"
+                 placeholder="SEND" required>
+        </div>
+        <button type="submit" class="btn btn-forest" {% if not smtp_available or not families %}disabled{% endif %}
+                data-confirm="Send the saved template to the selected household(s)? This is a real email; verify the preview and recipient scope.">
+          Send email(s)
+        </button>
+      </form>
+      {% else %}
+      <p class="form-hint">Save a new template before sending.</p>
+      {% endif %}
+      <p class="form-hint" style="margin-top:12px">Sending logs the exact personalized subject and body. SMTP accepted ≠ delivered. No scheduled messages are enabled.</p>
+    </div>
+  </section>
+</div>
+
+<section class="card" id="comm-history" style="margin-top:20px">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Previously sent emails</h2>
+      <p class="card-subtitle">Full copy of new messages, plus delivery status from older invitation sends.</p>
+    </div>
+    <form method="GET" action="{{ url_for('communications.page') }}" class="comm-year-selector">
+      <label for="comm-year" class="form-label">Year</label>
+      <input id="comm-year" type="number" min="2000" max="{{ current_year }}" name="history_year"
+             value="{{ history_year }}" class="form-control" style="width:105px">
+      <button type="submit" class="btn btn-secondary btn-sm">Show</button>
+    </form>
+  </div>
+  {% if not messages and not legacy_messages %}
+  <p class="form-hint">No recorded messages for {{ history_year }} yet.</p>
+  {% endif %}
+  {% for entry in messages %}
+  <details class="comm-history-entry">
+    <summary>
+      <span><strong>{{ entry.family_name }}</strong> · {{ entry.subject }}</span>
+      <span class="comm-status">{{ entry.status }} · {{ (entry.completed_at or entry.created_at)[:16] }}</span>
+    </summary>
+    <div class="comm-history-content">
+      <p><strong>To:</strong> {{ entry.recipient_email }} · <strong>Template:</strong> {{ entry.template_name }}</p>
+      {% if entry.error_message %}<p><strong>Status detail:</strong> {{ entry.error_message }}</p>{% endif %}
+      <p><strong>Sent subject:</strong> {{ entry.subject }}</p>
+      <pre>{{ entry.body }}</pre>
+    </div>
+  </details>
+  {% endfor %}
+  {% if legacy_messages %}
+  <h3 style="font-size:1rem;margin-top:22px">Older invitation delivery records</h3>
+  <p class="form-hint">Earlier sends recorded recipient and status, but did not save the message body.</p>
+  {% for entry in legacy_messages %}
+  <div class="comm-legacy-entry">
+    <strong>{{ entry.family_name }}</strong> · {{ entry.recipient_email }}
+    <span class="comm-status">{{ entry.status }} · {{ entry.sent_at[:16] }}</span>
+    {% if entry.error_message %}<small>{{ entry.error_message }}</small>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+</section>
+<script src="{{ url_for('static', filename='js/communications.js', v='communications-20261115') }}" defer></script>
+{% endblock %}
