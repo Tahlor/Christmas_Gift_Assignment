@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Christmas {{ year }} Archive — Family Gift Exchange{% endblock %}
+{% block content %}
+<div class="portal-hero">
+  <h1>🎄 {{ year }} Gift Exchange — {{ family.name }}</h1>
+  <p>This private year-specific link displays the assignment for {{ year }}, not the current year's drawing.</p>
+</div>
+{% if recipient %}
+<div class="assignment-card">
+  <p><strong>Your family's {{ year }} recipient:</strong></p>
+  <div class="recipient-name">{{ recipient.receiver_name }}</div>
+  <p class="form-hint" style="margin-top:16px">
+    Mailing addresses and wish lists can change. This archive preserves your assignment,
+    not a historical copy of those details.
+  </p>
+</div>
+{% else %}
+<div class="empty-state">No archived recipient was found for this family in {{ year }}.</div>
+{% endif %}
+<div class="card" style="margin-top:16px">
+  <a class="btn btn-primary" href="{{ url_for('family.portal', token=token) }}">Go to the current {{ current_year }} family page</a>
+  <p class="form-hint" style="margin-top:12px">The private link identifies your household. The year parameter selects which released exchange to display.</p>
+</div>
+{% endblock %}
