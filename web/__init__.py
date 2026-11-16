@@ -7,6 +7,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from web.config import Config
 from web.db import close_db, init_db
 from web.routes.admin import admin_bp
+from web.routes.communications import communications_bp
 from web.routes.api import api_bp
 from web.routes.family import family_bp
 from web.security import apply_security_headers, get_csrf_token, validate_csrf
@@ -66,6 +67,7 @@ def create_app(test_config=None) -> Flask:
     # Register blueprints
     app.register_blueprint(api_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(communications_bp)
     app.register_blueprint(family_bp)
 
     # Error handlers
