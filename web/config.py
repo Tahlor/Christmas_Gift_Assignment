@@ -41,6 +41,12 @@ class Config:
     SESSION_COOKIE_SECURE = os.environ.get("CHRISTMAS_COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
     SESSION_COOKIE_NAME = "christmas_session"
 
+    # Canonical HTTPS base URL for private year-specific family links.
+    # Never derive secret links from an untrusted request Host header.
+    CHRISTMAS_PUBLIC_BASE_URL = os.environ.get(
+        "CHRISTMAS_PUBLIC_BASE_URL", "https://taylorarchibald.com"
+    )
+
     # SMTP Configuration (Optional)
     SMTP_HOST = os.environ.get("SMTP_HOST", "")
     SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
