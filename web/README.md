@@ -168,3 +168,49 @@ The request/priority tables are added via idempotent schema initialization;
 deploy using the existing service restart/deployment procedure. No production
 roster, seed, draft or sent messages are modified by this source update.
 Tests: python -m pytest -q tests (also run automatically in GitHub Actions).
+
+## Communications and private mail merge (2026)
+
+The organizer navigation has a **Communications** tab at
+`/christmas/admin/communications`, with reusable Welcome & requests,
+Assignment announcement, and Friendly reminder templates. New templates can
+also be created and saved without sending them.
+
+- Click or drag a merge-field chip into the subject or body.
+- `{{family_name}}`, `{{year}}`, `{{family_members}}`, `{{family_address}}`,
+  `{{private_url}}`, `{{year_portal_url}}` and `{{request_url}}` are
+  usable before the draw. The year-specific URL retains the household's
+  existing high-entropy token and adds `?year=YYYY`; previous-year links
+  display only that year's released recipient.
+- `{{recipient_name}}`, `{{assignment_sentence}}`, `{{recipient_address}}`,
+  `{{recipient_wishlist}}`, `{{recipient_notes}}` are available only
+  after official publication. They cannot be previewed or sent from a sealed draft.
+- Preview renders the actual subject and body for a selected active household,
+  without sending. Default preview family is Taylor's household when present,
+  and the organizer can persist a different default.
+- Sending requires a saved template, chosen family/all-family scope, configured
+  SMTP provider, the explicit `SEND` confirmation, and an idempotent
+  dispatch identifier. Nothing is sent automatically on draft creation,
+  release, preview or template save.
+- Every new outgoing email stores a snapshot of its personalized subject,
+  body, destination and SMTP acceptance/error status in private SQLite tables.
+  Older invitations remain visible from the original `email_logs` status
+  table, though those earlier messages did not retain their bodies.
+- Sending the same message again requires a fresh deliberate dispatch.
+  An SMTP timeout might occur after the provider accepted a message, so
+  failures are not silently retried.
+- Historical recipients and sealed assignments remain protected. Private
+  URLs are family-scoped rather than independently revoked per year. Do not
+  share links publicly or include their raw values in logs.
+
+**Deployment / configuration:** SMTP uses the existing `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, and `SMTP_USE_TLS`
+environment variables, loaded from the restricted Christmas service
+environment. To override the base URL for private links, set
+`CHRISTMAS_PUBLIC_BASE_URL` to the trusted HTTPS origin. Never commit
+credentials. The new tables migrate additively when the Flask app starts.
+Run `python -m pytest -q tests`; GitHub Actions runs this automatically.
+
+No automatic periodic reminders are configured. Reuse a reminder template
+manually when needed; future automated cadences should require separate
+organizer opt-in and explicit delivery policies.
