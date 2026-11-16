@@ -304,19 +304,19 @@
       </p>
     </div>
     <div>
-      {% if smtp_available %}
-      <form method="POST" action="{{ url_for('admin.send_emails') }}" style="display: inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-forest" data-confirm="Send invitation emails to all families via SMTP? Each family will receive their private link.">
-          ✉️ Send All Invitations via SMTP
-        </button>
-      </form>
-      {% endif %}
+      <a class="btn btn-forest" href="{{ url_for('communications.page') }}">✉️ Compose assignment emails</a>
     </div>
   </div>
 </div>
 {% endif %}
 
+
+{% if not is_published and not assignments %}
+<p class="ui-context-note">Want to invite preferences before the draw?
+  <a href="{{ url_for('communications.page') }}">Compose an optional welcome email</a>
+  with each family's private request link.
+</p>
+{% endif %}
 
 <nav class="ui-history-strip" aria-label="Historical assignments">
   <a href="{{ url_for('admin.history') }}">Past years</a>
