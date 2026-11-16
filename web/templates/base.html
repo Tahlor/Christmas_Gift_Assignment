@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Christmas Gift Exchange{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='history-inplace-20261113') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='communications-20261115') }}">
 </head>
 <body>
   <header class="site-header">
@@ -26,6 +26,9 @@
           <li>
             <a href="{{ url_for('admin.history') }}" class="nav-link {{ 'active' if active_tab == 'history' else '' }}">History</a>
           </li>
+          <li>
+            <a href="{{ url_for('communications.page') }}" class="nav-link {{ 'active' if active_tab == 'communications' else '' }}">Communications</a>
+          </li>
         </ul>
       </nav>
 
@@ -35,6 +38,7 @@
           <a href="{{ url_for('admin.dashboard') }}">Organizer</a>
           <a href="{{ url_for('admin.families_list') }}">Families</a>
           <a href="{{ url_for('admin.history') }}">Past years</a>
+          <a href="{{ url_for('communications.page') }}">Communications</a>
           <form method="POST" action="{{ url_for('admin.admin_logout') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-secondary btn-sm" type="submit">Log out</button>
