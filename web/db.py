@@ -146,6 +146,42 @@ CREATE TABLE IF NOT EXISTS guess_ballots (
     UNIQUE(year, voting_family_id, receiving_family_id)
 );
 
+CREATE TABLE IF NOT EXISTS communication_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS communication_dispatches (
+    dispatch_id TEXT PRIMARY KEY,
+    year INTEGER NOT NULL,
+    template_id INTEGER REFERENCES communication_templates(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS communication_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dispatch_id TEXT NOT NULL REFERENCES communication_dispatches(dispatch_id),
+    year INTEGER NOT NULL,
+    template_name TEXT NOT NULL,
+    family_id INTEGER NOT NULL REFERENCES families(id),
+    recipient_email TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    UNIQUE(dispatch_id, family_id, recipient_email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_communications_year ON communication_messages(year, id);
+
 CREATE TABLE IF NOT EXISTS email_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     year INTEGER NOT NULL,
