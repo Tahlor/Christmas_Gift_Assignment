@@ -51,6 +51,21 @@ def portal(token: str):
         abort(404, description="Invalid or expired family link. Please check your link or contact the gift exchange organizer.")
 
     current_year = int(get_setting("current_year", str(datetime.now().year)))
+    raw_year = request.args.get("year", str(current_year))
+    if not raw_year.isdigit() or not 2000 <= int(raw_year) <= current_year:
+        abort(404, description="That exchange year is not available.")
+    requested_year = int(raw_year)
+    # Explicit year links continue to point to their archived exchange, without
+    # accidentally opening a newer year's recipient or allowing old-year edits.
+    if requested_year != current_year:
+        if not is_year_published(requested_year):
+            abort(404, description="That exchange year has not been released.")
+        old_recipient = get_family_recipient_for_year(family["id"], requested_year)
+        return render_template(
+            "family/archive.html", family=family, token=token,
+            year=requested_year, current_year=current_year,
+            recipient=old_recipient,
+        )
     published = is_year_published(current_year)
 
     # Record link visit in family_activity (minimal timestamp, no secret logged)
