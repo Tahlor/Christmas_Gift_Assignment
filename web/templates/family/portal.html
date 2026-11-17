@@ -106,7 +106,7 @@
   <div class="card-header">
     <div>
       <h2 class="card-title">🎁 Request a Family to Give To</h2>
-      <p class="card-subtitle">Optional and private. The organizer sees priorities and overall totals, not who requested whom.</p>
+      <p class="card-subtitle">Optional, not guaranteed, and private from other households. The organizer can review and manage saved requests.</p>
     </div>
   </div>
   <p style="font-size: 0.92rem; margin: 0 0 12px;">
@@ -133,7 +133,7 @@
     <p id="request-privacy-note" class="form-hint">
       We don't display your saved selection on this page, even on later visits.
       Submitting a new choice replaces the old one. The server associates the request with
-      your private family link for rule checks; this is not anonymous to server operators.
+      your private family link for rule checks; organizers can manage these requests.
     </p>
   </form>
   {% if request_excluded %}
@@ -148,7 +148,7 @@
   </div>
   {% endif %}
 </div>
-{% elif not published and family.active %}
+{% elif request_feature_enabled and not published and family.active %}
 <div class="card" style="margin: 16px 0 24px;">
   <strong>Recipient requests are closed.</strong>
   The current assignment draft has already been prepared.
