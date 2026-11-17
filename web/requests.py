@@ -15,6 +15,44 @@ from web.db import get_db
 from web.models import get_all_families, get_recent_history_disallowed, get_setting
 
 
+
+# Family-side visibility is a separate control from the assignment deadline.
+# Default to one test household; changing email-preview household changes this
+# test audience too. The organizer may always enter requests on behalf of any
+# active family through the authenticated dashboard.
+REQUEST_VISIBILITY_CHOICES = ("test_family", "admin_only", "all_families")
+
+
+def request_visibility(year):
+    """Year-scoped family-request visibility; unknown values fail closed."""
+    raw = get_setting(f"request_visibility_{year}", "test_family")
+    return raw if raw in REQUEST_VISIBILITY_CHOICES else "admin_only"
+
+
+def family_requests_enabled(year, giver_id):
+    """Enforce family request access server-side, not just by hiding the form."""
+    visibility = request_visibility(year)
+    if visibility == "admin_only":
+        return False
+    active_families = get_all_families(active_only=True)
+    if giver_id not in {f["id"] for f in active_families}:
+        return False
+    if visibility == "all_families":
+        return True
+    # Reuse the *same persisted default* as the Communications email preview.
+    from web.communications import get_preview_family_id
+    return giver_id == get_preview_family_id(active_families)
+
+
+def get_saved_requests(year):
+    """Organizer-only caller: saved preference for each giver in the year."""
+    rows = get_db().execute(
+        "SELECT giver_family_id, recipient_family_id FROM assignment_requests WHERE year=?",
+        (year,)
+    ).fetchall()
+    return {row["giver_family_id"]: row["recipient_family_id"] for row in rows}
+
+
 def requests_are_open(year):
     """A sealed or released assignment locks the year's request window."""
     row = get_db().execute(
