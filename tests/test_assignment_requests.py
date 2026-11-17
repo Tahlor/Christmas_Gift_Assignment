@@ -12,9 +12,9 @@ from web.models import (
     set_setting,
 )
 from web.requests import (
-    best_random_matching, choose_preferred_rotation_salt, get_priorities,
-    has_request, request_choices, requests_are_open, save_priorities, save_request,
-    valid_requests,
+    best_random_matching, choose_preferred_rotation_salt, family_requests_enabled,
+    get_priorities, get_saved_requests, has_request, request_choices, request_visibility,
+    requests_are_open, save_priorities, save_request, valid_requests,
 )
 
 
@@ -211,7 +211,7 @@ def test_invalid_csrf_and_token(app, roster):
     assert response.status_code == 404
 
 
-def test_admin_priority_route_does_not_publish_request_content(app, roster):
+def test_admin_priority_route_and_organizer_request_dashboard(app, roster):
     ids, tokens = roster
     with app.app_context():
         save_request(2026, ids[0], ids[2])
@@ -222,7 +222,7 @@ def test_admin_priority_route_does_not_publish_request_content(app, roster):
     assert login.status_code == 302
     response = client.get("/christmas/admin")
     assert response.status_code == 200
-    assert b"1 submitted" in response.data
+    assert b"1 saved" in response.data
     priorities = {f"priority_{fid}": "0" for fid in ids}
     priorities[f"priority_{ids[1]}"] = "1"
     response = client.post("/christmas/admin/requests/priorities",
@@ -230,3 +230,151 @@ def test_admin_priority_route_does_not_publish_request_content(app, roster):
     assert response.status_code == 302
     with app.app_context():
         assert get_priorities(2026)[ids[1]] == 1
+
+
+def login_admin(client):
+    response = client.post("/christmas/admin/login", data={
+        "password": "Password123!safe", "csrf_token": csrf(client),
+    })
+    assert response.status_code == 302
+
+
+def test_requests_hidden_by_default_except_email_preview_family(app, roster):
+    ids, tokens = roster
+    client = app.test_client()
+    with app.app_context():
+        assert request_visibility(2026) == "test_family"
+        assert family_requests_enabled(2026, ids[0])
+        assert not family_requests_enabled(2026, ids[1])
+
+    preview = client.get(f"/christmas/f/{tokens[ids[0]]}")
+    other = client.get(f"/christmas/f/{tokens[ids[1]]}")
+    assert b"Request a Family to Give To" in preview.data
+    assert b"Request a Family to Give To" not in other.data
+    assert b"Recipient requests are closed" not in other.data
+    # Not just presentation: a forged or previously bookmarked POST is denied.
+    assert client.post(
+        f"/christmas/f/{tokens[ids[1]]}/request",
+        data={"csrf_token": csrf(client), "recipient_id": ids[2]},
+    ).status_code == 403
+    assert client.post(
+        f"/christmas/f/{tokens[ids[1]]}/request",
+        data={"csrf_token": csrf(client), "action": "withdraw"},
+    ).status_code == 403
+    with app.app_context():
+        assert not has_request(2026, ids[1])
+
+
+def test_changing_default_email_preview_household_changes_test_access(app, roster):
+    ids, tokens = roster
+    client = app.test_client()
+    login_admin(client)
+    result = client.post("/christmas/admin/communications/preview-family", data={
+        "csrf_token": csrf(client), "preview_family_id": str(ids[1]),
+    })
+    assert result.status_code == 302
+    with app.app_context():
+        assert not family_requests_enabled(2026, ids[0])
+        assert family_requests_enabled(2026, ids[1])
+    assert b"Request a Family to Give To" not in client.get(f"/christmas/f/{tokens[ids[0]]}").data
+    assert b"Request a Family to Give To" in client.get(f"/christmas/f/{tokens[ids[1]]}").data
+    dashboard = client.get("/christmas/admin?mode=official")
+    assert b"Designated test family:" in dashboard.data
+    assert b"Change the default preview family in Communications" in dashboard.data
+
+
+def test_organizer_can_set_requests_for_any_family_and_reject_invalid(app, roster):
+    ids, tokens = roster
+    client = app.test_client()
+    # Organizer-only: non-admin POST must redirect to login.
+    route = f"/christmas/admin/requests/{ids[1]}"
+    anonymous = client.post(route, data={"csrf_token": csrf(client), "recipient_id": ids[2]})
+    assert anonymous.status_code == 302
+    assert "/login" in anonymous.location
+    with app.app_context():
+        assert not has_request(2026, ids[1])
+
+    login_admin(client)
+    dashboard = client.get("/christmas/admin?mode=official")
+    assert dashboard.status_code == 200
+    assert b"Set a request for any household" in dashboard.data
+    assert b"All participating families" in dashboard.data
+    assert b"Only the designated test family (default)" in dashboard.data
+
+    # The family is not eligible to submit, but an organizer may enter for it.
+    result = client.post(route, data={"csrf_token": csrf(client), "recipient_id": str(ids[2])})
+    assert result.status_code == 302
+    with app.app_context():
+        assert get_saved_requests(2026)[ids[1]] == ids[2]
+    dashboard = client.get("/christmas/admin")
+    assert b"2 submitted" not in dashboard.data
+    assert b"1 saved" in dashboard.data
+    assert f'value="{ids[2]}" selected'.encode() in dashboard.data
+    # Invalid selection is refused by the same hard-constraint validation.
+    result = client.post(route, data={"csrf_token": csrf(client), "recipient_id": str(ids[1])},
+                         follow_redirects=True)
+    assert b"excluded under the current rules" in result.data
+    with app.app_context():
+        assert get_saved_requests(2026)[ids[1]] == ids[2]
+    result = client.post(route, data={"csrf_token": csrf(client), "recipient_id": ""})
+    assert result.status_code == 302
+    with app.app_context():
+        assert not has_request(2026, ids[1])
+
+
+def test_visibility_can_be_enabled_for_all_then_switched_off(app, roster):
+    ids, tokens = roster
+    client = app.test_client()
+    login_admin(client)
+    visibility_route = "/christmas/admin/requests/visibility"
+    invalid = client.post(visibility_route, data={
+        "csrf_token": csrf(client), "visibility": "everyone",
+    }, follow_redirects=True)
+    assert b"valid request visibility setting" in invalid.data
+    with app.app_context():
+        assert request_visibility(2026) == "test_family"
+    result = client.post(visibility_route, data={
+        "csrf_token": csrf(client), "visibility": "all_families",
+    })
+    assert result.status_code == 302
+    assert b"Request a Family to Give To" in client.get(f"/christmas/f/{tokens[ids[1]]}").data
+    saved = client.post(f"/christmas/f/{tokens[ids[1]]}/request", data={
+        "csrf_token": csrf(client), "recipient_id": str(ids[2]),
+    })
+    assert saved.status_code == 302
+    result = client.post(visibility_route, data={
+        "csrf_token": csrf(client), "visibility": "admin_only",
+    })
+    assert result.status_code == 302
+    for fid in ids:
+        page = client.get(f"/christmas/f/{tokens[fid]}")
+        assert b"Request a Family to Give To" not in page.data
+        assert b"Recipient requests are closed" not in page.data
+        denied = client.post(f"/christmas/f/{tokens[fid]}/request", data={
+            "csrf_token": csrf(client), "action": "withdraw",
+        })
+        assert denied.status_code == 403
+    with app.app_context():
+        assert has_request(2026, ids[1])  # Visibility never deletes data.
+        set_setting("current_year", "2027")
+        assert request_visibility(2027) == "test_family"  # Each year defaults closed.
+        assert family_requests_enabled(2027, ids[0])
+
+
+def test_admin_request_entries_lock_with_sealed_draw(app, roster):
+    ids, tokens = roster
+    client = app.test_client()
+    login_admin(client)
+    with app.app_context():
+        save_draft_assignments(
+            2026, {ids[i]: ids[(i + 1) % len(ids)] for i in range(len(ids))}
+        )
+    result = client.post(f"/christmas/admin/requests/{ids[1]}", data={
+        "csrf_token": csrf(client), "recipient_id": str(ids[2])
+    }, follow_redirects=True)
+    assert b"Requests are closed because assignments have been prepared" in result.data
+    dashboard = client.get("/christmas/admin?mode=official")
+    assert b"Requests are locked" in dashboard.data
+    assert b"Set a request for any household" in dashboard.data
+    with app.app_context():
+        assert not has_request(2026, ids[1])
