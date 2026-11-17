@@ -312,6 +312,21 @@ def send_campaign(year, template_id, family_ids, dispatch_id):
     if len(selected) > 50:
         raise ValueError("Bulk sending is limited to 50 families at a time.")
 
+    # The starter welcome template offers recipient requests. Never email that
+    # invitation to households whose request forms the organizer has hidden.
+    # This is preflight, so a bulk send fails without sending any partial batch.
+    if template["kind"] == "welcome" and "request" in template["body"].lower():
+        from web.requests import family_requests_enabled, requests_are_open
+        if not requests_are_open(year):
+            raise ValueError(
+                "Recipient requests are closed. Edit the welcome template before sending."
+            )
+        if any(not family_requests_enabled(year, fid) for fid in selected):
+            raise ValueError(
+                "Some selected families cannot submit requests yet. Enable all families "
+                "under Dashboard → Recipient requests, or send only to the test household."
+            )
+
     # Preflight all recipients and every field before dispatching anything.
     prepared = []
     for family_id in selected:
