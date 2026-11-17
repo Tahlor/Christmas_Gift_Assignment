@@ -326,31 +326,81 @@
 </nav>
 
 
-<details class="ui-exchange-config" style="margin: 14px 0;">
-  <summary><span><strong>Private recipient requests</strong><small>{{ submitted_request_count }} submitted · requests never override the assignment rules</small></span></summary>
+<details class="ui-exchange-config" style="margin: 14px 0;" id="recipient-requests">
+  <summary><span><strong>Recipient requests</strong><small>{{ submitted_request_count }} saved · {% if request_audience == 'test_family' %}Test household only{% elif request_audience == 'all_families' %}All families enabled{% else %}Admin only{% endif %}</small></span></summary>
   <div class="ui-config-content">
-    <p class="ui-small-note">Households can privately request a recipient before the draw. This dashboard deliberately
-       does not reveal who submitted anything or which recipients were requested.
-       Priority 1 is considered first; equal ranks are considered together; Normal is lowest.
-       Preferences are nonbinding and an existing rotation cannot be changed to accommodate them.</p>
-    {% if request_window_open and active_families %}
-    <form method="POST" action="{{ url_for('admin.update_request_priorities') }}">
+    <p class="ui-small-note">Requests are optional and nonbinding; they never override no-repeat rules or established rotations. Only the organizer can see or manage all household requests here.</p>
+
+    <h3 style="font-size: 1rem; margin: 15px 0 8px;">Who can submit requests?</h3>
+    <form method="POST" action="{{ url_for('admin.update_request_visibility') }}" class="ui-request-visibility-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div style="display: grid; grid-template-columns: minmax(120px,1fr) auto; gap: 7px 14px; align-items: center; max-width: 470px;">
-        {% for f in active_families %}
-        <label for="request_priority_{{ f.id }}">{{ f.name }}</label>
-        <select class="form-control" id="request_priority_{{ f.id }}" name="priority_{{ f.id }}" style="min-width: 125px;">
-          <option value="0" {% if request_priorities.get(f.id, 0) == 0 %}selected{% endif %}>Normal</option>
-          {% for rank in range(1, n + 1) %}
-          <option value="{{ rank }}" {% if request_priorities.get(f.id, 0) == rank %}selected{% endif %}>Priority {{ rank }}</option>
-          {% endfor %}
-        </select>
-        {% endfor %}
-      </div>
-      <button type="submit" class="btn btn-secondary btn-sm" style="margin-top: 12px;">Save priorities</button>
+      <label for="request_visibility" class="form-label">Family portal access</label>
+      <select class="form-control" id="request_visibility" name="visibility">
+        <option value="test_family" {% if request_audience == 'test_family' %}selected{% endif %}>Only the designated test family (default)</option>
+        <option value="admin_only" {% if request_audience == 'admin_only' %}selected{% endif %}>Admin only — hide from every family</option>
+        <option value="all_families" {% if request_audience == 'all_families' %}selected{% endif %}>All participating families</option>
+      </select>
+      <button type="submit" class="btn btn-secondary btn-sm">Save access</button>
     </form>
+    <p class="ui-small-note">Designated test family: <strong>{{ preview_family_name }}</strong>.
+      This is the same household used for test email previews.
+      <a href="{{ url_for('communications.page') }}">Change the default preview family in Communications</a>.
+      Everyone else has no request form or submission access unless you enable all families.
+    </p>
+
+    <h3 style="font-size: 1rem; margin: 20px 0 8px;">Set a request for any household</h3>
+    <p class="ui-small-note">Organizer entries affect the actual future draw. One request per family; choosing “No request” clears it. Existing requests appear selected here. Same-priority ties are resolved randomly after maximizing satisfied requests.</p>
+    {% if request_window_open and active_families %}
+      <div class="ui-request-rows">
+      {% for entry in admin_request_rows %}
+        <div class="ui-request-row">
+          <form method="POST" action="{{ url_for('admin.save_admin_recipient_request', family_id=entry.family.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="form-label" for="admin_request_{{ entry.family.id }}">{{ entry.family.name }}</label>
+            <select class="form-control" id="admin_request_{{ entry.family.id }}" name="recipient_id" aria-label="Preferred recipient for {{ entry.family.name }}">
+              <option value="" {% if not entry.saved_id or entry.stale %}selected{% endif %}>No request</option>
+              {% for option in entry.eligible %}
+              <option value="{{ option.id }}" {% if entry.saved_id == option.id %}selected{% endif %}>{{ option.name }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-secondary btn-sm" type="submit">Save</button>
+          </form>
+          {% if entry.stale %}
+            <p class="form-hint">A previously saved request is no longer eligible. Choose another recipient or clear it.</p>
+          {% endif %}
+          {% if entry.excluded %}
+            <details class="ui-request-exclusions">
+              <summary>Unavailable recipients ({{ entry.excluded|length }})</summary>
+              <p>{% for excluded in entry.excluded %}{{ excluded.name }} — {{ excluded.reason }}{% if not loop.last %}; {% endif %}{% endfor %}</p>
+            </details>
+          {% endif %}
+        </div>
+      {% endfor %}
+      </div>
     {% else %}
-    <p class="ui-small-note">Requests and priority changes are closed because assignments are already prepared.</p>
+      <p class="ui-small-note"><strong>Requests are locked.</strong> Assignments have been prepared for this year. To change requests, the organizer must first explicitly discard the sealed draft (if one exists). Released assignments cannot be changed.</p>
+    {% endif %}
+
+    <h3 style="font-size: 1rem; margin: 20px 0 8px;">Request priority</h3>
+    <p class="ui-small-note">Priority 1 goes first. Households with the same priority are considered together; Normal is lowest. A higher priority never overrides a mandatory rule.</p>
+    {% if request_window_open and active_families %}
+      <form method="POST" action="{{ url_for('admin.update_request_priorities') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="ui-request-priorities">
+          {% for f in active_families %}
+          <label for="request_priority_{{ f.id }}">{{ f.name }}</label>
+          <select class="form-control" id="request_priority_{{ f.id }}" name="priority_{{ f.id }}">
+            <option value="0" {% if request_priorities.get(f.id, 0) == 0 %}selected{% endif %}>Normal</option>
+            {% for rank in range(1, n + 1) %}
+            <option value="{{ rank }}" {% if request_priorities.get(f.id, 0) == rank %}selected{% endif %}>Priority {{ rank }}</option>
+            {% endfor %}
+          </select>
+          {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-secondary btn-sm" style="margin-top: 12px;">Save priorities</button>
+      </form>
+    {% else %}
+      <p class="ui-small-note">Priority changes are locked after assignments are prepared.</p>
     {% endif %}
   </div>
 </details>
