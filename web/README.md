@@ -221,6 +221,13 @@ also be created and saved without sending them.
   URLs are family-scoped rather than independently revoked per year. Do not
   share links publicly or include their raw values in logs.
 
+**Invitation safety:** a saved Welcome template that offers requests cannot
+be dispatched to a household whose request form is hidden or after the
+requests window closes. The bulk-send preflight rejects the entire batch
+before any SMTP messages are sent. Enable **All participating families**
+first, or email the designated test family only. Other email templates
+continue to work according to their normal release/merge restrictions.
+
 **Deployment / configuration:** SMTP uses the existing `SMTP_HOST`,
 `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, and `SMTP_USE_TLS`
 environment variables, loaded from the restricted Christmas service
