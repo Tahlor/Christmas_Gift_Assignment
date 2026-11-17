@@ -11,6 +11,7 @@ from web.communications import (
     set_preview_family_id, smtp_ready,
 )
 from web.models import get_all_families, get_family_by_id, get_setting
+from web.requests import request_visibility
 from web.security import admin_required
 
 communications_bp = Blueprint("communications", __name__, url_prefix="/christmas/admin/communications")
@@ -47,6 +48,7 @@ def page():
         messages=message_history(history_year),
         legacy_messages=legacy_email_history(history_year),
         smtp_available=smtp_ready(),
+        request_audience=request_visibility(year),
         dispatch_id=secrets.token_hex(16),
     )
 
