@@ -31,7 +31,7 @@ from web.models import (
     update_family_contact_and_notes,
 )
 
-from web.requests import has_request, request_choices, requests_are_open, save_request
+from web.requests import (family_requests_enabled, has_request, request_choices, requests_are_open, save_request)
 
 
 family_bp = Blueprint("family", __name__, url_prefix="/christmas")
@@ -99,8 +99,10 @@ def portal(token: str):
         or (get_setting(f"guessing_game_enabled_{current_year}") == "1")
     )
 
-    # Private, optional recipient requests close when a real draft is sealed.
-    request_open = bool(family["active"] and requests_are_open(current_year))
+    # Requests are available to the designated email-preview test household by
+    # default, not to all families. Server-side POSTs enforce the same rule.
+    request_feature_enabled = family_requests_enabled(current_year, family["id"])
+    request_open = bool(request_feature_enabled and requests_are_open(current_year))
     request_eligible, request_excluded = (
         request_choices(current_year, family["id"]) if request_open else ([], [])
     )
@@ -127,6 +129,7 @@ def portal(token: str):
         show_game=show_game,
         is_confirmed=is_confirmed,
         request_open=request_open,
+        request_feature_enabled=request_feature_enabled,
         request_eligible=request_eligible,
         request_excluded=request_excluded,
         request_submitted=request_submitted,
@@ -142,6 +145,8 @@ def submit_recipient_request(token: str):
     if not family:
         abort(404)
     year = int(get_setting("current_year", str(datetime.now().year)))
+    if not family_requests_enabled(year, family["id"]):
+        abort(403, description="Recipient requests are not enabled for this household.")
     if request.form.get("action") == "withdraw":
         recipient_id = None
     else:
