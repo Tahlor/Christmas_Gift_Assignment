@@ -1061,3 +1061,19 @@ details.settings-drawer summary:hover {
 .comm-legacy-entry{border-top:1px solid var(--color-border);padding:10px 0;display:flex;gap:10px;flex-wrap:wrap}
 .comm-legacy-entry small{width:100%}
 @media(max-width:850px){.comm-layout{grid-template-columns:1fr}.comm-preview-default{grid-template-columns:1fr}.comm-history-entry summary{align-items:flex-start;flex-direction:column;gap:3px}}
+
+
+/* Organizer-only request editor — compact and readable on narrow screens. */
+.ui-request-visibility-form{display:flex;align-items:end;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.ui-request-visibility-form .form-label{width:100%;margin:0}
+.ui-request-visibility-form select{width:auto;max-width:100%;flex:1;min-width:230px}
+.ui-request-rows{display:grid;gap:0;border:1px solid var(--color-border);border-radius:9px;overflow:hidden}
+.ui-request-row{padding:11px 13px;border-bottom:1px solid var(--color-border)}
+.ui-request-row:last-child{border-bottom:0}
+.ui-request-row form{display:grid;grid-template-columns:minmax(135px,1fr) minmax(150px,1.3fr) auto;gap:10px;align-items:center}
+.ui-request-row .form-label{margin:0;font-weight:600}
+.ui-request-exclusions{font-size:.82rem;color:var(--color-text-muted);margin-top:6px}
+.ui-request-exclusions summary{cursor:pointer}
+.ui-request-exclusions p{margin:6px 0}
+.ui-request-priorities{display:grid;grid-template-columns:minmax(140px,1fr) minmax(150px,1fr);gap:8px 14px;max-width:500px;align-items:center}
+@media(max-width:650px){.ui-request-row form{grid-template-columns:minmax(0,1fr) auto}.ui-request-row .form-label{grid-column:1 / -1}.ui-request-priorities{grid-template-columns:1fr}.ui-request-priorities label{margin-top:5px}.ui-request-visibility-form select{min-width:0}}
