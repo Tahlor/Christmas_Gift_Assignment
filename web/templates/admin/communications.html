@@ -15,6 +15,15 @@
   <strong>Sending not configured.</strong> You can design templates and preview them now, but sending requires an SMTP host and sender address on Archimedes. No welcome or assignment messages have been sent by this screen.
 </div>
 {% endif %}
+{% if request_audience != 'all_families' %}
+<div class="alert alert-warning" role="status">
+  <strong>Recipient requests are not open to all households.</strong>
+  {% if request_audience == 'test_family' %}Only the designated preview/test household can submit.{% else %}Only the organizer can enter them.{% endif %}
+  To send a welcome template inviting requests to everyone, first
+  <a href="{{ url_for('admin.dashboard', mode='official') }}#recipient-requests">enable all families in the dashboard</a>.
+  Assignment and reminder messages are unaffected.
+</div>
+{% endif %}
 
 <div class="comm-layout">
   <section class="card">
