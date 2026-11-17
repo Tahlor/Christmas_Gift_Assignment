@@ -41,6 +41,7 @@ from web.assignment import (
     validate_rules_feasibility,
 )
 from web.continuity import find_boundary_conflicts, find_boundary_safe_salt, confirmed_history_by_year
+from web.communications import get_preview_family_id
 from web.db import get_db
 from web.email_service import (
     generate_mailto_link,
@@ -101,12 +102,17 @@ from web.models import (
     upsert_address_review,
 )
 from web.requests import (
+    REQUEST_VISIBILITY_CHOICES,
     best_random_matching,
     choose_preferred_rotation_salt,
     get_priorities,
+    get_saved_requests,
+    request_choices,
     request_count,
+    request_visibility,
     requests_are_open,
     save_priorities,
+    save_request,
     valid_requests,
 )
 from web.sso_auth import auto_login_from_existing_sso
@@ -333,6 +339,26 @@ def dashboard():
     submitted_request_count = request_count(current_year)
     request_priorities = get_priorities(current_year)
     request_window_open = requests_are_open(current_year)
+    request_audience = request_visibility(current_year)
+    preview_family_id = get_preview_family_id(active_families)
+    preview_family_name = next(
+        (f["name"] for f in active_families if f["id"] == preview_family_id), "None"
+    )
+    saved_preferences = get_saved_requests(current_year)
+    # The organizer is allowed to see and enter preferences on behalf of each
+    # household. Family visitors can never request for a different household.
+    admin_request_rows = []
+    for fam in active_families:
+        eligible, excluded = request_choices(current_year, fam["id"])
+        saved_id = saved_preferences.get(fam["id"])
+        admin_request_rows.append({
+            "family": fam,
+            "eligible": eligible,
+            "excluded": excluded,
+            "saved_id": saved_id,
+            "stale": saved_id is not None
+                     and saved_id not in {choice["id"] for choice in eligible},
+        })
 
     # Test mode state (from session if simulation was run)
     test_sim_data = session.pop("test_sim_data", None)
@@ -378,14 +404,49 @@ def dashboard():
         test_sim_data=test_sim_data,
         submitted_request_count=submitted_request_count,
         request_priorities=request_priorities,
-        request_window_open=request_window_open
+        request_window_open=request_window_open,
+        request_audience=request_audience,
+        preview_family_id=preview_family_id,
+        preview_family_name=preview_family_name,
+        admin_request_rows=admin_request_rows,
     )
+
+
+@admin_bp.route("/admin/requests/visibility", methods=["POST"])
+@admin_required
+def update_request_visibility():
+    """Explicitly opt in more family portals; otherwise test household only."""
+    year = int(get_setting("current_year", str(datetime.now().year)))
+    selected = request.form.get("visibility", "")
+    if selected not in REQUEST_VISIBILITY_CHOICES:
+        flash("Choose a valid request visibility setting.", "error")
+    else:
+        set_setting(f"request_visibility_{year}", selected)
+        flash("Family request visibility updated for this year.", "success")
+    return redirect(url_for("admin.dashboard", mode="official"))
+
+
+@admin_bp.route("/admin/requests/<int:family_id>", methods=["POST"])
+@admin_required
+def save_admin_recipient_request(family_id):
+    """Organizer's explicit per-household preference; cannot relax draw rules."""
+    year = int(get_setting("current_year", str(datetime.now().year)))
+    raw = request.form.get("recipient_id")
+    if raw is None or (raw and not raw.isdigit()):
+        flash("Choose an eligible recipient or select No request.", "error")
+        return redirect(url_for("admin.dashboard", mode="official"))
+    try:
+        save_request(year, family_id, int(raw) if raw else None)
+        flash("Household request saved." if raw else "Household request cleared.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("admin.dashboard", mode="official"))
 
 
 @admin_bp.route("/admin/requests/priorities", methods=["POST"])
 @admin_required
 def update_request_priorities():
-    """Set household request priority, without viewing who requested whom."""
+    """Set household request priority before the official draw is sealed."""
     year = int(get_setting("current_year", str(datetime.now().year)))
     families = get_all_families(active_only=True)
     try:
