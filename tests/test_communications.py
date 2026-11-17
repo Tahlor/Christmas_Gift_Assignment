@@ -213,3 +213,30 @@ def test_default_household_setting_is_persistent(app, families):
         assert get_preview_family_id([
             get_family_by_id(i) for i in families
         ]) == families[1]
+
+
+def test_welcome_requests_email_preflight_respects_hidden_family_forms(app, families, monkeypatch):
+    import web.communications as comm
+    sent = []
+    monkeypatch.setattr(comm, "_smtp_send", lambda *args: sent.append(args))
+    app.config["SMTP_HOST"] = "smtp.example.test"
+    app.config["SMTP_FROM"] = "gift@example.test"
+    with app.app_context():
+        comm.ensure_templates()
+        welcome = next(t for t in comm.list_templates() if t["kind"] == "welcome")
+        # No partial sends when a bulk campaign includes a hidden household.
+        with pytest.raises(ValueError, match="cannot submit requests"):
+            comm.send_campaign(2026, welcome["id"], families, "a" * 32)
+        assert not sent
+        assert get_db().execute("SELECT COUNT(*) FROM communication_messages").fetchone()[0] == 0
+        from web.requests import request_visibility
+        assert request_visibility(2026) == "test_family"
+        set_setting("request_visibility_2026", "all_families")
+        result = comm.send_campaign(2026, welcome["id"], [families[1]], "b" * 32)
+        assert result == {"accepted": 1, "failed": 0}
+        assert len(sent) == 1
+        # Explicit admin-only hides the form again, even for test household.
+        set_setting("request_visibility_2026", "admin_only")
+        with pytest.raises(ValueError, match="cannot submit requests"):
+            comm.send_campaign(2026, welcome["id"], [families[0]], "c" * 32)
+        assert len(sent) == 1
