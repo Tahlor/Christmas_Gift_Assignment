@@ -131,18 +131,36 @@ See [V2_DESIGN.md](../V2_DESIGN.md) for the full UX proposal, mathematical guara
 
 ## Optional private recipient requests
 
-Before the current year's official assignment is prepared, each active household can
-use its existing private family link to request one preferred recipient. The form
-shows the households excluded by the self-gift and confirmed historical no-repeat
-rules, with reasons. Replacing a request overwrites the previous choice; withdrawal
-removes it. Requests close as soon as a sealed draft exists, and do not affect
-published assignments or the original command-line assigner.
+Before the current year's official assignment is prepared, the organizer can
+save one nonbinding preferred recipient **for any active household** from the
+**Official dashboard → Recipient requests** section. Each household has a
+separate row with rule-filtered eligible recipients, its saved selection, an
+optional clear action, and the reasons other families are excluded. The
+dashboard also controls request priorities: a smaller positive number ranks
+ahead of a larger one, and unranked households have normal priority.
 
-The organizer's **Private recipient requests** panel displays only the overall
-request count and the priority configuration by household. It does **not** show
-who submitted a request or which recipients were chosen. A smaller positive
-priority number ranks ahead of a larger number; unranked households have normal
-priority. For each tied priority tier, the solver maximizes the number of satisfied requests. Once the best possible satisfaction counts for every tier are fixed, it breaks ties randomly: uniformly across equally good complete draws for the random method, and by unbiased reservoir sampling across equally good eligible candidate schedules for a newly established rotation.
+**Family portal access is disabled by default for all but one household:**
+the designated test family, which is **exactly the default email-preview
+household** chosen in Communications. If the organizer changes that preview
+default, test-form access moves with it. On the Official dashboard, the organizer
+can choose one of three year-specific modes:
+- **Test family only (default):** all other household portals omit the
+  request form and its "closed" message, and their request POSTs return HTTP 403.
+- **Admin only:** no household sees or can submit a request; the organizer
+  retains full control.
+- **All participating families:** family portals show the request form and
+  may create, replace or withdraw their own request via their private link.
+
+The form enforces the same self-gift and historical no-repeat exclusions as
+organizer entries. Visibility changes do not delete saved preferences. All
+requests and priority edits are locked as soon as a real draft is sealed;
+published assignments and the original CLI remain unchanged.
+
+For each tied priority tier, the solver maximizes the number of satisfied
+requests. Once the best possible satisfaction counts for every tier are fixed,
+it breaks ties randomly: uniformly across equally good complete draws for
+random assignment, and by unbiased reservoir sampling across equally good
+eligible candidate schedules for a newly established rotation.
 
 Matching always treats requests as **soft preferences**:
 - For a new shuffled repeating rotation with no saved schedule, the system
@@ -156,13 +174,13 @@ Matching always treats requests as **soft preferences**:
 - Custom/predictable/legacy schedules are not modified: requests can only be
   fulfilled if the existing schedule independently produces the requested pair.
 
-**Privacy scope:** recipient choices and request ownership never enter the
-organizer web dashboard or the family guessing game. Requests are associated
-with household IDs in the server's private SQLite database to enforce rules
-and priorities; they are *not cryptographically anonymous* to administrators
-with direct database access, and private family links should remain secret.
-The portal deliberately does not echo a submitted selection on subsequent
-page loads. Avoid promising that any request will be satisfied.
+**Privacy scope:** the authenticated organizer dashboard displays saved
+requests per family, and the organizer may enter and change requests on each
+family's behalf. Other households cannot inspect those choices; the family
+portal deliberately does not echo a submitted selection. These are **not
+anonymous from the organizer or database administrators**. The app stores
+household IDs and preferences privately for eligibility and scoring. The
+family private URLs must remain secret. Never promise a request is guaranteed.
 
 The request/priority tables are added via idempotent schema initialization;
 deploy using the existing service restart/deployment procedure. No production
