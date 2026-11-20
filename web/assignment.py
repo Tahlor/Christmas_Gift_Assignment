@@ -379,10 +379,30 @@ def uniform_random_derangement(
     # exactly in proportion to their counts, preserving uniformity.
     # Avoid unbounded exponential work for enormous rosters.
     if n > 18:
-        raise AssignmentInfeasibleError(
-            "Too many constraints to sample uniformly within the safety limit. "
-            "Reduce the no-repeat lookback and try again."
-        )
+        # Exact existence test via augmenting paths. Sampling in this large-roster
+        # fallback is randomized, but not claimed to be uniform.
+        owners = {}
+        candidates = {
+            g: [r for r in givers if r != g and r not in history.get(g, set())]
+            for g in givers
+        }
+        for options in candidates.values():
+            rng.shuffle(options)
+        def augment(g, visited):
+            for r in candidates[g]:
+                if r in visited:
+                    continue
+                visited.add(r)
+                if r not in owners or augment(owners[r], visited):
+                    owners[r] = g
+                    return True
+            return False
+        order = list(givers)
+        rng.shuffle(order)
+        if not all(augment(g, set()) for g in order):
+            raise AssignmentInfeasibleError(
+                "No perfect matching satisfies the mandatory recipient restrictions.")
+        return {g: r for r, g in owners.items()}
     solution = _uniform_matching(givers, history, rng)
     if solution is None:
         raise AssignmentInfeasibleError(
@@ -689,7 +709,10 @@ def batch_simulate_assignments(
     num_runs: int = 100,
     salt: str = "0",
     fixed_household_order: Optional[List[int]] = None,
-    fixed_offset_order: Optional[List[int]] = None
+    fixed_offset_order: Optional[List[int]] = None,
+    initial_history: Optional[Dict[int, Dict[int, int]]] = None,
+    rolling_k: Optional[int] = None,
+    cycle_anchor_override: Optional[int] = None
 ) -> Dict[str, object]:
     """Run batch Monte Carlo simulations (e.g. 100 runs) for the test lab.
 
@@ -705,7 +728,7 @@ def batch_simulate_assignments(
     giver_counts: Dict[int, Dict[int, int]] = {g: {r: 0 for r in family_ids if r != g} for g in family_ids}
     successful_runs = 0
     infeasible_runs = 0
-    sim_history_by_year: Dict[int, Dict[int, int]] = {}
+    sim_history_by_year: Dict[int, Dict[int, int]] = {y: dict(m) for y,m in (initial_history or {}).items() if y < start_year}
 
     master_seed_int = int.from_bytes(hashlib.sha256(seed.encode("utf-8")).digest()[:8], "big") if seed else random.randrange(10**9)
 
@@ -714,7 +737,7 @@ def batch_simulate_assignments(
         # Build disallowed history from recent simulated years
         disallowed: Dict[int, Set[int]] = {g: set() for g in family_ids}
         if lookback_years > 0:
-            for past_yr in range(max(start_year, sim_year - lookback_years), sim_year):
+            for past_yr in range(sim_year - lookback_years, sim_year):
                 if past_yr in sim_history_by_year:
                     for g, r in sim_history_by_year[past_yr].items():
                         if g in disallowed:
@@ -742,6 +765,11 @@ def batch_simulate_assignments(
                 if conflicts and lookback_years > 0 and run_idx > 0:
                     infeasible_runs += 1
                     continue
+            elif mode == "random_lookahead":
+                from web.lookahead import plan_cycle
+                mapping = plan_cycle(family_ids, sim_year,
+                                     cycle_anchor_override if cycle_anchor_override is not None else anchor_year,
+                                     seed, sim_history_by_year, lookback_years, rolling_k)[sim_year]
             elif mode == "randomized_cycle":
                 mapping = randomized_coverage_cycle(family_ids, sim_year, anchor_year, seed)
                 conflicts = validate_mapping_against_history(mapping, disallowed)
