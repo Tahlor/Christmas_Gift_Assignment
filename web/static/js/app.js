@@ -23,6 +23,11 @@ document.addEventListener("DOMContentLoaded", () => {
       example: "A might give to D this year and B next year; C could go several years without being selected.",
       warning: true
     },
+    random_lookahead: {
+      summary: "Randomly draw from valid matchings that can still complete the full cycle. Respect archived years and the no-repeat limit, even at cycle boundaries. If rolling coverage is enabled, also enforce every complete window.",
+      example: "A gives to B this year only if C, D, and E can still fit into the remaining years. With an exact four-year rolling window the order must repeat; with aligned cycles it can reshuffle.",
+      warning: false
+    },
     randomized_cycle: {
       summary: "Shuffle separately within each block of years. Each block covers everyone, but repeats can happen where blocks meet.",
       example: "A might give to B in the final year of one block and B again in the first year of the next.",
