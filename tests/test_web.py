@@ -1778,3 +1778,43 @@ def test_historical_years_have_shareable_fragment_links(app, client):
     script = client.get("/christmas/static/js/app.js")
     assert b"data-ajax-spoilers" in script.data
     assert b"oldY = window.scrollY" in script.data
+
+
+def test_saved_recipient_request_visible_on_organizer_not_only_settings(app, client):
+    from web.requests import save_request
+    with app.app_context():
+        ids=[create_family("Preference sample " + str(i), f"pref{i}@example.test")
+             for i in range(5)]
+        save_request(2026,ids[0],ids[1])
+    login_admin(client)
+    page=client.get("/christmas/admin/dashboard?mode=official")
+    assert page.status_code==200
+    body=page.get_data(as_text=True)
+    assert 'aria-label="Saved recipient requests"' in body
+    summary=body.split('aria-label="Saved recipient requests"',1)[1].split('</section>',1)[0]
+    assert "Preference sample 0" in summary and "Preference sample 1" in summary
+    assert "Preferences only, not official assignments" in summary
+
+
+def test_official_lookahead_respects_request_and_seals_only_current_year(app,client):
+    from web.requests import save_request
+    from web.models import set_setting
+    with app.app_context():
+        ids=[create_family("Lookahead sample " + str(i), f"look{i}@example.test")
+             for i in range(5)]
+        set_setting("cycle_anchor_year","2026")
+        save_request(2026,ids[0],ids[1])
+    login_admin(client)
+    response=client.post("/christmas/admin/assignments/prepare",data={
+        "csrf_token":get_csrf(client),"assignment_mode":"random_lookahead",
+        "no_repeat_years":"1","coverage_window_k":"4","enforce_sliding_coverage":"1",
+    },follow_redirects=True)
+    assert response.status_code==200
+    with app.app_context():
+        from web.db import get_db
+        db=get_db()
+        rows=db.execute("SELECT giver_family_id,receiver_family_id,published FROM assignments WHERE year=2026").fetchall()
+        assert len(rows)==5
+        assert dict((r[0], r[1]) for r in rows)[ids[0]]==ids[1]
+        assert all(r[2]==0 for r in rows)
+        assert db.execute("SELECT COUNT(*) FROM assignments WHERE year>2026").fetchone()[0]==0
