@@ -41,6 +41,7 @@ from web.assignment import (
     validate_rules_feasibility,
 )
 from web.continuity import find_boundary_conflicts, find_boundary_safe_salt, confirmed_history_by_year
+from web.lookahead import plan_cycle
 from web.communications import get_preview_family_id
 from web.db import get_db
 from web.email_service import (
@@ -356,6 +357,7 @@ def dashboard():
             "eligible": eligible,
             "excluded": excluded,
             "saved_id": saved_id,
+            "saved_name": next((f["name"] for f in all_families if f["id"] == saved_id), "Unavailable household"),
             "stale": saved_id is not None
                      and saved_id not in {choice["id"] for choice in eligible},
         })
@@ -564,7 +566,7 @@ def prepare_assignments():
         return redirect(url_for("admin.dashboard"))
 
     stable, warning = check_roster_stability(family_ids)
-    if mode in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation", "predictable_rotation", "randomized_cycle") and not stable:
+    if mode in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation", "predictable_rotation", "randomized_cycle", "random_lookahead") and not stable:
         flash(warning + " Reset the cycle anchor explicitly before preparing a complete cycle.", "error")
         return redirect(url_for("admin.dashboard"))
 
@@ -675,6 +677,11 @@ def prepare_assignments():
                     "error"
                 )
                 return redirect(url_for("admin.dashboard"))
+        elif mode == "random_lookahead":
+            historical = confirmed_history_by_year(get_db(), current_year, max(lookback, coverage_k - 1 if enforce_coverage else 0, n - 2))
+            mapping = plan_cycle(family_ids, current_year, anchor_year, cycle_secret,
+                                 historical, lookback, coverage_k if enforce_coverage else None,
+                                 requested, priorities)[current_year]
         elif mode == "randomized_cycle":
             mapping = randomized_coverage_cycle(family_ids, current_year, anchor_year, cycle_secret)
             conflicts = validate_mapping_against_history(mapping, history_disallowed)
@@ -772,7 +779,7 @@ def preview_assignments():
         return redirect(url_for("admin.dashboard"))
 
     stable, warning = check_roster_stability(family_ids)
-    if mode in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation", "predictable_rotation", "randomized_cycle") and not stable:
+    if mode in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation", "predictable_rotation", "randomized_cycle", "random_lookahead") and not stable:
         flash(warning + " Reset the cycle anchor explicitly before previewing another complete cycle.", "error")
         return redirect(url_for("admin.dashboard"))
 
@@ -823,6 +830,14 @@ def preview_assignments():
                     "error"
                 )
                 return redirect(url_for("admin.dashboard"))
+        elif mode == "random_lookahead":
+            rolling = request.form.get("enforce_sliding_coverage", get_setting("enforce_sliding_coverage", "1")) == "1"
+            k = int(request.form.get("coverage_window_k", get_setting("coverage_window_k", "4")))
+            historical = confirmed_history_by_year(get_db(), current_year, max(lookback, k - 1 if rolling else 0, n - 2))
+            mapping = plan_cycle(family_ids, current_year, anchor_year, cycle_secret,
+                                 historical, lookback, k if rolling else None,
+                                 valid_requests(current_year, family_ids, history_disallowed),
+                                 get_priorities(current_year))[current_year]
         elif mode == "randomized_cycle":
             mapping = randomized_coverage_cycle(family_ids, current_year, anchor_year, cycle_secret)
             conflicts = validate_mapping_against_history(mapping, history_disallowed)
@@ -1206,6 +1221,8 @@ def test_lab():
     try:
         if error_message:
             raise AssignmentError(error_message)
+        historical = confirmed_history_by_year(get_db(), year, max(lookback, coverage_k - 1 if enforce_coverage else 0, len(family_ids)-2)) if roster_choice == "current" else {}
+        simulation_anchor = anchor_year if roster_choice == "current" else year
         if sim_type == "batch_100":
             batch_result = batch_simulate_assignments(
                 family_ids=family_ids,
@@ -1215,6 +1232,9 @@ def test_lab():
                 seed=test_seed,
                 lookback_years=lookback,
                 num_runs=100,
+                initial_history=historical if mode == "random_lookahead" else None,
+                rolling_k=coverage_k if enforce_coverage else None,
+                cycle_anchor_override=simulation_anchor if mode == "random_lookahead" else None,
                 fixed_household_order=fixed_ids,
                 fixed_offset_order=fixed_steps
             )
@@ -1223,7 +1243,11 @@ def test_lab():
             if roster_choice == "current":
                 history_disallowed = get_recent_history_disallowed(family_ids, year, lookback)
 
-            mapping = simulate_assignment(
+            if mode == "random_lookahead":
+                mapping = plan_cycle(family_ids, year, simulation_anchor, test_seed,
+                                     historical, lookback, coverage_k if enforce_coverage else None)[year]
+            else:
+                mapping = simulate_assignment(
                 family_ids=family_ids,
                 mode=mode,
                 year=year,
@@ -1536,7 +1560,7 @@ def update_settings():
         set_setting("current_year", current_year)
     if anchor_year.isdigit() and len(anchor_year) == 4:
         set_setting("cycle_anchor_year", anchor_year)
-    if assignment_mode in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation", "randomized_cycle", "predictable_rotation", "uniform_random"):
+    if assignment_mode in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation", "randomized_cycle", "predictable_rotation", "uniform_random", "random_lookahead"):
         set_setting("assignment_mode", assignment_mode)
 
     set_setting("no_repeat_years", str(l_int))
