@@ -194,6 +194,7 @@
           <input id="test_coverage_k" type="number" name="coverage_window_k" min="1" value="{{ coverage_window_k }}" class="form-control ui-inline-number" required> years.
         </label>
         <label class="ui-rule-check"><input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}> Guarantee full coverage</label>
+        <input type="hidden" name="enforce_sliding_coverage" value="0">
       </div>
     </div>
 
@@ -203,6 +204,7 @@
         <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
         <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Custom fixed rotation</option>
         <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Random each year</option>
+        <option value="random_lookahead" {{ 'selected' if mode == 'random_lookahead' else '' }}>Random shuffle with lookahead (recommended)</option>
         <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy shuffled cycles</option>
       </select>
       <div class="method-explainer" data-method-explainer aria-live="polite">
@@ -326,6 +328,22 @@
 </nav>
 
 
+{% if submitted_request_count %}
+<section class="ui-saved-requests" aria-label="Saved recipient requests" style="margin: 12px 0; font-size: .9rem;">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+    <strong>Recipient requests ({{ submitted_request_count }})</strong>
+    <button type="button" class="btn btn-secondary btn-sm" data-open-config="recipient-requests">Manage</button>
+  </div>
+  {% for entry in admin_request_rows if entry.saved_id %}
+  <div class="ui-request-summary-row" style="display:flex;flex-wrap:wrap;gap:4px 8px;padding:5px 0;border-bottom:1px solid var(--color-border-subtle);">
+    <span style="font-weight:600;">{{ entry.family.name }}</span>
+    <span aria-label="requests">→ {{ entry.saved_name }}</span>
+    {% if entry.stale %}<span style="color:#9a5c15;">Excluded by current rules</span>{% endif %}
+  </div>
+  {% endfor %}
+  <small class="ui-small-note">Preferences only, not official assignments.</small>
+</section>
+{% endif %}
 <details class="ui-exchange-config" style="margin: 14px 0;" id="recipient-requests">
   <summary><span><strong>Recipient requests</strong><small>{{ submitted_request_count }} saved · {% if request_audience == 'test_family' %}Test household only{% elif request_audience == 'all_families' %}All families enabled{% else %}Admin only{% endif %}</small></span></summary>
   <div class="ui-config-content">
@@ -687,6 +705,7 @@
           <input id="prep_coverage_k" type="number" name="coverage_window_k" min="1" value="{{ coverage_window_k }}" class="form-control ui-inline-number" required> years.
         </label>
         <label class="ui-rule-check"><input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}> Guarantee full coverage</label>
+        <input type="hidden" name="enforce_sliding_coverage" value="0">
       </div>
     </div>
 
@@ -696,6 +715,7 @@
         <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
         <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Custom fixed rotation</option>
         <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Random each year</option>
+        <option value="random_lookahead" {{ 'selected' if mode == 'random_lookahead' else '' }}>Random shuffle with lookahead (recommended)</option>
         <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy shuffled cycles</option>
       </select>
       <div class="method-explainer" data-method-explainer aria-live="polite">
@@ -747,6 +767,7 @@
             <option value="shuffled_rotation" {{ 'selected' if mode == 'shuffled_rotation' or mode == 'shuffled_repeating_rotation' else '' }}>Shuffled Repeating Rotation</option>
             <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Fixed Rotation</option>
             <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Uniform Random Derangement</option>
+            <option value="random_lookahead" {{ 'selected' if mode == 'random_lookahead' else '' }}>Random Shuffle with Lookahead</option>
             <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy Aligned Cycles</option>
           </select>
         </div>
