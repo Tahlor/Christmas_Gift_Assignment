@@ -125,6 +125,9 @@
       <div><strong>{{ test_sim_data.batch_result.requests_satisfied }} / {{ test_sim_data.batch_result.successful_runs * test_sim_data.batch_result.preferences_total }}</strong><span>Eligible preferences met across valid draws</span></div>
       {% endif %}
     </div>
+    {% if test_sim_data.sim_type == 'batch_100' and test_sim_data.batch_result.not_simulated_years %}
+    <p class="ui-test-warning">Stopped after the first infeasible future year. {{ test_sim_data.batch_result.not_simulated_years }} later years were <strong>not simulated</strong>; they have not been classified as failures.</p>
+    {% endif %}
     {% if test_sim_data.batch_result.infeasible_runs %}
       <p class="ui-test-warning">Some tests could not produce a valid matching. These are <strong>not</strong> counted as repeat violations unless a rule violation was actually observed. Review the failure reasons before preparing assignments.</p>
       {% if test_sim_data.batch_result.failure_reasons %}
