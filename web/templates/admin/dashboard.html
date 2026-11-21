@@ -111,13 +111,13 @@
       {% if test_sim_data.sim_type == 'trials_100' %}
       The same year, participating families, verified history, lookback, coverage and preferences were tested 100 times. Random methods explore alternative choices; fixed/locked rotations may correctly produce the same matching every time. This <strong>does not</strong> simulate 100 future Christmases or guarantee identical random recipients when preparing the official draw.
       {% else %}
-      A single hypothetical future from {{ test_sim_data.year }} through {{ test_sim_data.year + 99 }}. The same five-household roster is assumed throughout, so this is a long-term stress test, <strong>not</strong> 100 independent current-year draws.
+      A single hypothetical future from {{ test_sim_data.year }} through {{ test_sim_data.year + 99 }}. The roster is assumed unchanged throughout, so this is a long-term stress test, <strong>not</strong> 100 independent current-year draws. If a year fails, simulation stops; later years are not counted as successful or individually tested.
       {% endif %}
     </p>
     <div class="ui-test-metrics">
       <div><strong>{{ test_sim_data.batch_result.successful_runs }} / {{ test_sim_data.batch_result.num_runs }}</strong><span>{{ 'Valid candidate draws' if test_sim_data.sim_type == 'trials_100' else 'Years simulated successfully' }}</span></div>
-      <div><strong>{{ test_sim_data.batch_result.infeasible_runs }}</strong><span>Unsuccessful attempts</span></div>
-      <div><strong>{{ test_sim_data.batch_result.distinct_mappings if test_sim_data.batch_result.distinct_mappings is defined else test_sim_data.batch_result.distinct_pairs_seen }}</strong><span>{{ 'Different complete matchings' if test_sim_data.sim_type == 'trials_100' else 'Different giver-recipient pairs seen' }}</span></div>
+      <div><strong>{{ test_sim_data.batch_result.infeasible_runs }}</strong><span>{{ 'Unsuccessful draw attempts' if test_sim_data.sim_type == 'trials_100' else 'First failed future year (if any)' }}</span></div>
+      <div><strong>{{ test_sim_data.batch_result.distinct_mappings if test_sim_data.sim_type == 'trials_100' else test_sim_data.batch_result.distinct_pairs_seen }}</strong><span>{{ 'Different complete matchings' if test_sim_data.sim_type == 'trials_100' else 'Different giver-recipient pairs seen' }}</span></div>
       {% if test_sim_data.batch_result.requests_satisfied is defined and test_sim_data.batch_result.preferences_total %}
       <div><strong>{{ test_sim_data.batch_result.requests_satisfied }} / {{ test_sim_data.batch_result.successful_runs * test_sim_data.batch_result.preferences_total }}</strong><span>Eligible preferences met across valid draws</span></div>
       {% endif %}
