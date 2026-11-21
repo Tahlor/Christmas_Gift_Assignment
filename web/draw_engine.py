@@ -104,7 +104,7 @@ def build_candidate(family_ids, year, anchor_year, mode, seed, lookback,
         schedule = lambda target: predictable_rotation(ids, target, anchor_year)
         if find_boundary_conflicts(schedule, history_by_year, year, lookback):
             raise AssignmentInfeasibleError(
-                f"Predictable rotation for {year} violates the requested {lookback}-year lookback constraint at the historical boundary.")
+                f"Predictable rotation for {year} violates the requested {lookback}-year lookback constraint at the historical boundary. Refusing to create assignments.")
         mapping = schedule(year)
     elif mode == "random_lookahead":
         from web.lookahead import plan_cycle
