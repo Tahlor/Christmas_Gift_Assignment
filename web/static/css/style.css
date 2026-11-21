@@ -1117,3 +1117,16 @@ details.settings-drawer summary:hover {
   .ui-matrix-details{max-width:100%;}
   .ui-matrix-table{font-size:.74rem;}
 }
+
+.ui-official-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+.ui-official-config-actions .btn {flex: 1 1 180px; text-align:center; white-space: normal;}
+@media(max-width:700px) {
+  .ui-official-config-actions {display:grid;grid-template-columns:1fr;}
+  .ui-official-config-actions .btn {width:100%;min-height:42px;}
+}
