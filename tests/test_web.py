@@ -1519,7 +1519,7 @@ def test_organizer_leads_with_next_action_and_hides_configuration_below_family_a
     test_page = client.get("/christmas/admin/dashboard?mode=test")
     html = test_page.get_data(as_text=True)
     assert test_page.status_code == 200
-    assert html.index("Configure and run a test") < html.index('id="test-config"')
+    assert html.index("Test 100 possible") < html.index('id="test-config"')
     assert '<details id="test-config"' in html
     js = client.get("/christmas/static/js/app.js")
     assert b"[data-open-config]" in js.data
