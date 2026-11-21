@@ -512,6 +512,50 @@ def regenerate_seed():
     return redirect(url_for("admin.dashboard"))
 
 
+@admin_bp.route("/admin/assignments/save-shared-settings", methods=["POST"])
+@admin_required
+def save_shared_draw_settings():
+    """Save the *same* rules used by Test and Official without generating a draw."""
+    year = int(get_setting("current_year", str(datetime.now().year)))
+    if get_assignments_for_year(year):
+        flash("An official draft has already been prepared. Its rules cannot be changed here.", "error")
+        return redirect(url_for("admin.dashboard", mode="official"))
+    active_ids = [f["id"] for f in get_all_families(active_only=True)]
+    mode = request.form.get("assignment_mode", "shuffled_rotation")
+    allowed = ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation",
+               "predictable_rotation", "randomized_cycle", "uniform_random", "random_lookahead")
+    try:
+        if mode not in allowed:
+            raise ValueError("Unknown assignment method.")
+        lookback = int(request.form.get("no_repeat_years", "1"))
+        coverage = int(request.form.get("coverage_window_k", "4"))
+        enforce = "1" in request.form.getlist("enforce_sliding_coverage")
+        feasibility = validate_rules_feasibility(len(active_ids), lookback, coverage, enforce)
+        if not feasibility["is_feasible"]:
+            raise ValueError(" ".join(feasibility["errors"]))
+        if enforce and mode in ("uniform_random", "randomized_cycle"):
+            raise ValueError("This method cannot guarantee rolling coverage. Choose a rotation or lookahead.")
+        if mode == "fixed_rotation":
+            raw_h = request.form.get("fixed_household_order", "").strip()
+            raw_o = request.form.get("fixed_offset_order", "").strip()
+            order = [int(x.strip()) for x in raw_h.split(",") if x.strip()] if raw_h else sorted(active_ids)
+            offsets = [int(x.strip()) for x in raw_o.split(",") if x.strip()] if raw_o else list(range(1, len(active_ids)))
+            valid, issues = validate_fixed_rotation_config(order, offsets, active_ids)
+            if not valid:
+                raise ValueError(" ".join(issues))
+            set_setting("fixed_household_order", ",".join(str(x) for x in order))
+            set_setting("fixed_offset_order", ",".join(str(x) for x in offsets))
+        set_setting("assignment_mode", mode)
+        set_setting("no_repeat_years", str(lookback))
+        set_setting("coverage_window_k", str(coverage))
+        set_setting("enforce_sliding_coverage", "1" if enforce else "0")
+        session.pop("draft_rule_config", None)
+        flash("Shared draw rules saved. Test uses these same settings, roster, requests and history; no assignments were generated.", "success")
+    except (ValueError, AssignmentError) as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("admin.dashboard", mode="official"))
+
+
 @admin_bp.route("/admin/assignments/prepare", methods=["POST"])
 @admin_required
 def prepare_assignments():
