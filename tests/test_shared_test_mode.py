@@ -5,7 +5,7 @@ from web.models import (
     save_manual_history_for_year,
 )
 from web.requests import save_request
-from tests.test_web import login_admin, get_csrf
+from tests.test_web import app, client, login_admin, get_csrf
 
 
 def five(app):
