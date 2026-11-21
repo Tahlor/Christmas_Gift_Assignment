@@ -179,3 +179,18 @@ def test_stale_validation_detects_changed_recipient_request(client,app):
     assert b"Results out of date" in outdated.data
     # Explicit Test and Official fields still share the same saved constraints.
     assert b"Shared with Test + Official" in outdated.data
+
+
+def test_future_projection_does_not_count_unattempted_years_as_failures():
+    from web.test_runner import run_projection_report
+    from web.assignment import fixed_rotation
+    ids=[1,2,3,4,5]
+    forbidden=fixed_rotation(ids,[1,2,3,4],2026,2026)
+    report=run_projection_report(
+        ids,2026,2026,"fixed_rotation","seed",1,4,True,
+        {2025:forbidden},fixed_household_order=ids,
+        fixed_offset_order=[1,2,3,4],years=100)
+    assert report["successful_runs"]==0
+    assert report["infeasible_runs"]==1
+    assert report["not_simulated_years"]==99
+    assert len(report["failure_reasons"])==1
