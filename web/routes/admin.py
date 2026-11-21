@@ -42,6 +42,7 @@ from web.assignment import (
 )
 from web.continuity import find_boundary_conflicts, find_boundary_safe_salt, confirmed_history_by_year
 from web.draw_engine import build_candidate
+from web.test_runner import run_trial_report, run_projection_report
 from web.lookahead import plan_cycle
 from web.communications import get_preview_family_id
 from web.db import get_db
@@ -255,14 +256,8 @@ def dashboard():
     fixed_household_order = settings.get("fixed_household_order", "")
     fixed_offset_order = settings.get("fixed_offset_order", "")
 
-    # Keep the exact choices after a test run when switching to Official.
-    # This session-only draft NEVER changes saved production settings.
-    draft_rules = session.get("draft_rule_config")
-    if draft_rules:
-        mode = draft_rules["mode"]
-        no_repeat_years = draft_rules["no_repeat_years"]
-        coverage_window_k = draft_rules["coverage_window_k"]
-        enforce_sliding_coverage = draft_rules["enforce_sliding_coverage"]
+    # Test and Official read the same canonical database settings.
+    # A test cannot shadow them with old session-only configuration.
 
     all_families = get_all_families()
     active_families = [f for f in all_families if f["active"] == 1]
@@ -364,7 +359,7 @@ def dashboard():
         })
 
     # Test mode state (from session if simulation was run)
-    test_sim_data = session.pop("test_sim_data", None)
+    test_sim_data = session.get("test_sim_data")
 
     return render_template(
         "admin/dashboard.html",
@@ -1042,165 +1037,176 @@ def mark_address_review(family_id: int):
 @admin_bp.route("/admin/test-sim", methods=["POST"])
 @admin_required
 def test_lab():
-    """Test simulation sandbox. GET redirects to dashboard?mode=test.
+    """Read-only validation against the SAME algorithm and rules used in Official.
 
-    POST executes pure in-memory simulations without mutating production state,
-    then redirects to the unified dashboard in test mode to display results.
+    New UI tests use saved/shared parameters and the actual production seed.
+    Legacy or explicitly altered sandbox requests can provide experimental
+    year/seed/roster inputs; these are clearly identified as experiments.
     """
     if request.method == "GET":
         return redirect(url_for("admin.dashboard", mode="test"))
 
     settings = get_all_settings()
     current_year = int(settings.get("current_year", datetime.now().year))
-    active_families = get_all_families(active_only=True)
-
-    mode = request.form.get("assignment_mode", "shuffled_rotation")
+    anchor_year = int(settings.get("cycle_anchor_year", current_year))
+    mode = request.form.get("assignment_mode", settings.get("assignment_mode", "shuffled_rotation"))
     year = int(request.form.get("year", current_year))
-    anchor_year = int(request.form.get("anchor_year", current_year))
-    test_seed = request.form.get("test_seed", "test-lab-seed-2026").strip()
+    if not 1900 <= year <= 2200:
+        abort(400)
+    # Production always uses the saved anchor, not the client's arbitrary anchor.
+    # An explicit alternate anchor is a sandbox override, not an Official check.
+    requested_anchor = int(request.form.get("anchor_year", anchor_year))
+    override_seed = request.form.get("test_seed", "").strip()
+    simulation_seed = override_seed or get_production_seed()
     roster_choice = request.form.get("roster_choice", "current")
-    custom_n = int(request.form.get("custom_n", "5"))
-    lookback = max(0, int(request.form.get("no_repeat_years", "1")))
-    coverage_k = max(1, int(request.form.get("coverage_window_k", "4")))
-    enforce_coverage = (request.form.get("enforce_sliding_coverage") == "1")
-    sim_type = request.form.get("sim_type", "single")
-    session["draft_rule_config"] = {
-        "mode": mode, "no_repeat_years": lookback,
-        "coverage_window_k": coverage_k,
-        "enforce_sliding_coverage": enforce_coverage,
-    }
-
-    # Determine roster to use
-    if roster_choice == "synthetic_4":
-        sim_roster = generate_synthetic_roster(4)
-    elif roster_choice == "synthetic_5":
-        sim_roster = generate_synthetic_roster(5)
-    elif roster_choice == "synthetic_6":
-        sim_roster = generate_synthetic_roster(6)
-    elif roster_choice == "synthetic_8":
-        sim_roster = generate_synthetic_roster(8)
-    elif roster_choice == "custom":
-        sim_roster = generate_synthetic_roster(max(2, min(custom_n, 25)))
+    custom_n = max(2, min(int(request.form.get("custom_n", "5")), 25))
+    lookback = max(0, int(request.form.get("no_repeat_years", settings.get("no_repeat_years", "1"))))
+    coverage_k = max(1, int(request.form.get("coverage_window_k", settings.get("coverage_window_k", "4"))))
+    share_config = request.form.get("apply_shared_config") == "1"
+    if "enforce_sliding_coverage" in request.form:
+        enforce_coverage = "1" in request.form.getlist("enforce_sliding_coverage")
     else:
-        # Current active families
-        if len(active_families) >= 2:
-            sim_roster = [dict(f) for f in active_families]
-        else:
-            sim_roster = generate_synthetic_roster(5)
-            roster_choice = "synthetic_5"
+        # Old API clients without this field have historically requested an
+        # unconstrained sandbox. The shared browser form always includes it.
+        enforce_coverage = settings.get("enforce_sliding_coverage", "1") == "1" if share_config else False
+    sim_type = request.form.get("sim_type", "single")
+    if sim_type not in ("single", "batch_100", "trials_100"):
+        abort(400)
 
-    family_map = {f["id"]: f["name"] for f in sim_roster}
+    active_families = get_all_families(active_only=True)
+    if roster_choice == "current":
+        sim_roster = [dict(f) for f in active_families]
+    elif roster_choice in ("synthetic_4", "synthetic_5", "synthetic_6", "synthetic_8"):
+        sim_roster = generate_synthetic_roster(int(roster_choice.split("_")[1]))
+    elif roster_choice == "custom":
+        sim_roster = generate_synthetic_roster(custom_n)
+    else:
+        abort(400)
+    if len(sim_roster) < 2:
+        # Preserve the older example sandbox behavior for an unconfigured site.
+        sim_roster = generate_synthetic_roster(5)
+        roster_choice = "synthetic_5"
+
     family_ids = [f["id"] for f in sim_roster]
+    family_map = {str(f["id"]): f["name"] for f in sim_roster}
+    n = len(family_ids)
+    is_official_configuration = bool(
+        roster_choice == "current"
+        and year == current_year
+        and requested_anchor == anchor_year
+        and not override_seed
+    )
 
-    # Test the custom fixed order exactly as entered. Never save it to official settings.
     fixed_ids = None
     fixed_steps = None
-    fixed_error = None
-    if mode == "fixed_rotation":
-        raw_ids = request.form.get("fixed_household_order", "").strip()
-        raw_steps = request.form.get("fixed_offset_order", "").strip()
-        try:
-            fixed_ids = [int(x.strip()) for x in raw_ids.split(",") if x.strip()] if raw_ids else sorted(family_ids)
-            fixed_steps = [int(x.strip()) for x in raw_steps.split(",") if x.strip()] if raw_steps else list(range(1, len(family_ids)))
-            valid, problems = validate_fixed_rotation_config(fixed_ids, fixed_steps, family_ids)
-            if not valid:
-                fixed_error = " ".join(problems)
-        except ValueError:
-            fixed_error = "Enter comma-separated numbers for family IDs and yearly steps."
-
-    single_result = None
-    batch_result = None
-    cycle_info = get_cycle_info(len(family_ids), year, anchor_year)
     error_message = None
-    feasibility = validate_rules_feasibility(
-        len(family_ids), lookback, coverage_k, enforce_coverage)
+    if mode == "fixed_rotation":
+        try:
+            raw_ids = request.form.get("fixed_household_order", settings.get("fixed_household_order", "")).strip()
+            raw_steps = request.form.get("fixed_offset_order", settings.get("fixed_offset_order", "")).strip()
+            fixed_ids = [int(x.strip()) for x in raw_ids.split(",") if x.strip()] if raw_ids else None
+            fixed_steps = [int(x.strip()) for x in raw_steps.split(",") if x.strip()] if raw_steps else None
+            valid, problems = validate_fixed_rotation_config(
+                fixed_ids or sorted(family_ids),
+                fixed_steps or list(range(1, n)), family_ids)
+            if not valid:
+                error_message = " ".join(problems)
+        except ValueError:
+            error_message = "Enter comma-separated numeric IDs for a custom rotation."
+
+    feasibility = validate_rules_feasibility(n, lookback, coverage_k, enforce_coverage)
     if not feasibility["is_feasible"]:
         error_message = " ".join(feasibility["errors"])
-    if fixed_error:
-        error_message = fixed_error
     if enforce_coverage and mode in ("uniform_random", "randomized_cycle"):
-        error_message = (
-            "This method does not guarantee coverage in every sliding window. "
-            "Use Shuffled repeating rotation or Custom fixed rotation, or turn off the guarantee."
-        )
+        error_message = "This method cannot promise coverage in every rolling window. Choose a rotation or random lookahead."
+    if mode not in ("shuffled_rotation", "shuffled_repeating_rotation", "fixed_rotation",
+                    "predictable_rotation", "randomized_cycle", "uniform_random", "random_lookahead"):
+        error_message = "Unknown assignment method."
+    # Only the shared form is authorized to update canonical production rules.
+    # This never saves a matching and never changes the production seed.
+    if share_config and not error_message:
+        if get_assignments_for_year(current_year):
+            error_message = "An official draft already exists. Its rules are sealed; discard it before changing shared rules."
+        else:
+            set_setting("assignment_mode", mode)
+            set_setting("no_repeat_years", str(lookback))
+            set_setting("coverage_window_k", str(coverage_k))
+            set_setting("enforce_sliding_coverage", "1" if enforce_coverage else "0")
+            if mode == "fixed_rotation":
+                set_setting("fixed_household_order", ",".join(str(x) for x in (fixed_ids or sorted(family_ids))))
+                set_setting("fixed_offset_order", ",".join(str(x) for x in (fixed_steps or list(range(1, n)))))
+            session.pop("draft_rule_config", None)
+
+    history = {}
+    preferences, priorities = {}, {}
+    if roster_choice == "current":
+        history = confirmed_history_by_year(
+            get_db(), year, max(lookback, coverage_k - 1 if enforce_coverage else 0, n - 2))
+        recent = get_recent_history_disallowed(family_ids, year, lookback)
+        if year == current_year:
+            preferences = valid_requests(year, family_ids, recent)
+            priorities = get_priorities(year)
+
+    rotation_salt = settings.get("rotation_salt", "") if is_official_configuration else ""
+    published_ongoing = has_published_years() if is_official_configuration else False
+    simulation_anchor = requested_anchor if roster_choice == "current" else year
+    single_result, batch_result = None, None
 
     try:
         if error_message:
             raise AssignmentError(error_message)
-        historical = confirmed_history_by_year(get_db(), year, max(lookback, coverage_k - 1 if enforce_coverage else 0, len(family_ids)-2)) if roster_choice == "current" else {}
-        simulation_anchor = anchor_year if roster_choice == "current" else year
-        if sim_type == "batch_100":
-            batch_result = batch_simulate_assignments(
-                family_ids=family_ids,
-                mode=mode,
-                start_year=year,
-                anchor_year=anchor_year,
-                seed=test_seed,
-                lookback_years=lookback,
-                num_runs=100,
-                initial_history=historical if mode == "random_lookahead" else None,
-                rolling_k=coverage_k if enforce_coverage else None,
-                cycle_anchor_override=simulation_anchor if mode == "random_lookahead" else None,
-                fixed_household_order=fixed_ids,
-                fixed_offset_order=fixed_steps
-            )
+        if sim_type == "trials_100":
+            batch_result = run_trial_report(
+                family_ids, year, simulation_anchor, mode, simulation_seed,
+                lookback, coverage_k, enforce_coverage, history,
+                preferences=preferences, priorities=priorities,
+                rotation_salt=rotation_salt, official_exists=published_ongoing,
+                fixed_household_order=fixed_ids, fixed_offset_order=fixed_steps)
+        elif sim_type == "batch_100":
+            batch_result = run_projection_report(
+                family_ids, year, simulation_anchor, mode, simulation_seed,
+                lookback, coverage_k, enforce_coverage, history,
+                preferences=preferences, priorities=priorities,
+                rotation_salt=rotation_salt, official_exists=published_ongoing,
+                fixed_household_order=fixed_ids, fixed_offset_order=fixed_steps)
         else:
-            history_disallowed = None
-            if roster_choice == "current":
-                history_disallowed = get_recent_history_disallowed(family_ids, year, lookback)
-
-            if mode == "random_lookahead":
-                mapping = plan_cycle(family_ids, year, simulation_anchor, test_seed,
-                                     historical, lookback, coverage_k if enforce_coverage else None)[year]
-            else:
-                mapping = simulate_assignment(
-                family_ids=family_ids,
-                mode=mode,
-                year=year,
-                anchor_year=anchor_year,
-                seed=test_seed,
-                history_disallowed=history_disallowed,
-                fixed_household_order=fixed_ids,
-                fixed_offset_order=fixed_steps
-            )
-
-            conflicts = []
-            if history_disallowed and lookback > 0:
-                conflicts = validate_mapping_against_history(mapping, history_disallowed)
-
+            mapping, _ = build_candidate(
+                family_ids, year, simulation_anchor, mode, simulation_seed,
+                lookback, coverage_k, enforce_coverage, history,
+                preferences=preferences, priorities=priorities,
+                rotation_salt=rotation_salt, official_exists=published_ongoing,
+                fixed_household_order=fixed_ids, fixed_offset_order=fixed_steps)
             single_result = {
                 "mapping": [
-                    {
-                        "giver_id": g,
-                        "giver_name": family_map.get(g, f"Family #{g}"),
-                        "receiver_id": r,
-                        "receiver_name": family_map.get(r, f"Family #{r}"),
-                        "has_conflict": (g, r) in conflicts
-                    }
-                    for g, r in mapping.items()
+                    {"giver_id": giver, "giver_name": family_map[str(giver)],
+                     "receiver_id": receiver, "receiver_name": family_map[str(receiver)],
+                     "has_conflict": False}
+                    for giver, receiver in mapping.items()
                 ],
-                "conflicts": conflicts
+                "conflicts": []
             }
     except (AssignmentError, AssignmentInfeasibleError) as exc:
         error_message = str(exc)
 
+    if batch_result:
+        # Flask's cookie JSON decoder converts int dictionary keys to strings.
+        # Serialize explicitly, so the recipient frequency table cannot
+        # silently display zero for a successfully counted matching.
+        batch_result["matrix"] = {
+            str(g): {str(r): count for r, count in row.items()}
+            for g, row in batch_result["matrix"].items()
+        }
     test_sim_data = {
-        "mode": mode,
-        "year": year,
-        "anchor_year": anchor_year,
-        "test_seed": test_seed,
-        "roster_choice": roster_choice,
-        "custom_n": custom_n,
-        "lookback": lookback,
-        "sim_type": sim_type,
-        "sim_roster": sim_roster,
-        "family_map": family_map,
-        "cycle_info": cycle_info,
-        "single_result": single_result,
-        "batch_result": batch_result,
+        "mode": mode, "year": year, "anchor_year": simulation_anchor,
+        "test_seed": "official (private)" if not override_seed else "sandbox (custom)",
+        "is_official_configuration": is_official_configuration,
+        "roster_choice": roster_choice, "custom_n": custom_n,
+        "lookback": lookback, "coverage_k": coverage_k,
+        "enforce_coverage": enforce_coverage, "sim_type": sim_type,
+        "sim_roster": sim_roster, "family_map": family_map,
+        "single_result": single_result, "batch_result": batch_result,
         "error_message": error_message
     }
-
     session["test_sim_data"] = test_sim_data
     session["admin_mode"] = "test"
     return redirect(url_for("admin.dashboard", mode="test"))
