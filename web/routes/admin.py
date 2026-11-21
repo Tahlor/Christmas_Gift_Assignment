@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import os
 import hmac
+import hashlib
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -127,6 +128,36 @@ from web.security import (
 )
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/christmas")
+
+def _official_draw_signature():
+    """Non-revealing fingerprint of the real configuration and supporting facts.
+
+    A previously run test is marked stale if the method, rules, roster,
+    production seed, requests, priority, or confirmed historical pairs change.
+    """
+    settings = get_all_settings()
+    year = int(settings.get("current_year", datetime.now().year))
+    ids = sorted(f["id"] for f in get_all_families(active_only=True))
+    lookback = int(settings.get("no_repeat_years", "1"))
+    k = int(settings.get("coverage_window_k", "4"))
+    rolling = settings.get("enforce_sliding_coverage", "1") == "1"
+    history = confirmed_history_by_year(
+        get_db(), year, max(lookback, k-1 if rolling else 0, len(ids)-2))
+    data = {
+        "year": year, "anchor": settings.get("cycle_anchor_year"),
+        "mode": settings.get("assignment_mode"), "lookback": lookback,
+        "coverage": k, "rolling": rolling, "ids": ids,
+        "salt": settings.get("rotation_salt", ""),
+        "fixed_order": settings.get("fixed_household_order", ""),
+        "fixed_shifts": settings.get("fixed_offset_order", ""),
+        "seed_fingerprint": get_seed_fingerprint(),
+        "preferences": sorted(get_saved_requests(year).items()),
+        "priorities": sorted(get_priorities(year).items()),
+        "history": {str(y): sorted(m.items()) for y, m in history.items()},
+    }
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:24]
+
+
 
 
 # ---------------------------------------------------------
@@ -360,6 +391,10 @@ def dashboard():
 
     # Test mode state (from session if simulation was run)
     test_sim_data = session.get("test_sim_data")
+    test_result_stale = bool(
+        test_sim_data and test_sim_data.get("is_official_configuration")
+        and test_sim_data.get("draw_signature") != _official_draw_signature()
+    )
 
     return render_template(
         "admin/dashboard.html",
@@ -400,6 +435,7 @@ def dashboard():
         is_revealed=is_revealed,
         game_scores=game_scores,
         test_sim_data=test_sim_data,
+        test_result_stale=test_result_stale,
         submitted_request_count=submitted_request_count,
         request_priorities=request_priorities,
         request_window_open=request_window_open,
@@ -1249,7 +1285,8 @@ def test_lab():
         "enforce_coverage": enforce_coverage, "sim_type": sim_type,
         "sim_roster": sim_roster, "family_map": family_map,
         "single_result": single_result, "batch_result": batch_result,
-        "error_message": error_message
+        "error_message": error_message,
+        "draw_signature": _official_draw_signature() if is_official_configuration else None
     }
     session["test_sim_data"] = test_sim_data
     session["admin_mode"] = "test"
