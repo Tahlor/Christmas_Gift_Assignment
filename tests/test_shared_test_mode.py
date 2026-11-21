@@ -144,3 +144,38 @@ def test_real_and_test_single_draw_use_same_engine(client,app):
         assert actual == sample
         assert len(actual)==len(ids)
         assert all(not r["published"] for r in get_assignments_for_year(2026))
+
+
+def test_official_can_save_shared_rules_without_generating_assignments(client,app):
+    five(app)
+    login_admin(client)
+    response = client.post("/christmas/admin/assignments/save-shared-settings", data={
+        "csrf_token":get_csrf(client), "assignment_mode":"random_lookahead",
+        "no_repeat_years":"2", "coverage_window_k":"5",
+        "enforce_sliding_coverage":"0",
+    }, follow_redirects=True)
+    assert response.status_code==200
+    assert b"Shared draw rules saved" in response.data
+    with app.app_context():
+        assert get_setting("assignment_mode")=="random_lookahead"
+        assert get_setting("no_repeat_years")=="2"
+        assert get_setting("enforce_sliding_coverage")=="0"
+        assert not get_assignments_for_year(2026)
+    test_page=client.get("/christmas/admin/dashboard?mode=test")
+    assert b"2-year no-repeat" in test_page.data
+    assert b"5-year coverage target" in test_page.data
+
+
+def test_stale_validation_detects_changed_recipient_request(client,app):
+    ids=five(app)
+    login_admin(client)
+    response=client.post("/christmas/admin/test-lab",data=form(client,sim_type="single"),
+                         follow_redirects=True)
+    assert response.status_code==200
+    assert b"Results out of date" not in response.data
+    with app.app_context():
+        save_request(2026,ids[0],ids[1])
+    outdated=client.get("/christmas/admin/dashboard?mode=test")
+    assert b"Results out of date" in outdated.data
+    # Explicit Test and Official fields still share the same saved constraints.
+    assert b"Shared with Test + Official" in outdated.data
