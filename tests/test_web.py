@@ -1212,8 +1212,9 @@ class TestAssignmentTestLab:
             follow_redirects=True
         )
         assert resp.status_code == 200
-        assert b"Batch 100 Simulations Benchmark" in resp.data
-        assert b"Successful Runs" in resp.data
+        assert b"100 consecutive simulated years" in resp.data
+        assert b"Years simulated successfully" in resp.data
+        assert b"not</strong> 100 independent" in resp.data
 
 
 # =====================================================================
