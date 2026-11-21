@@ -41,6 +41,7 @@ from web.assignment import (
     validate_rules_feasibility,
 )
 from web.continuity import find_boundary_conflicts, find_boundary_safe_salt, confirmed_history_by_year
+from web.draw_engine import build_candidate
 from web.lookahead import plan_cycle
 from web.communications import get_preview_family_id
 from web.db import get_db
@@ -524,7 +525,11 @@ def prepare_assignments():
     anchor_year = int(get_setting("cycle_anchor_year", str(current_year)))
     mode = request.form.get("assignment_mode", get_setting("assignment_mode", "shuffled_rotation"))
     lookback = max(0, int(request.form.get("no_repeat_years", get_setting("no_repeat_years", "1"))))
-    enforce_coverage = (request.form.get("enforce_sliding_coverage", get_setting("enforce_sliding_coverage", "1")) == "1")
+    enforce_coverage = (
+        "1" in request.form.getlist("enforce_sliding_coverage")
+        if "enforce_sliding_coverage" in request.form else
+        get_setting("enforce_sliding_coverage", "1") == "1"
+    )
     coverage_k = max(1, int(request.form.get("coverage_window_k", get_setting("coverage_window_k", "4"))))
 
     if is_year_published(current_year):
@@ -577,131 +582,32 @@ def prepare_assignments():
     priorities = get_priorities(current_year)
 
     try:
+        history_by_year = confirmed_history_by_year(
+            get_db(), current_year,
+            max(lookback, coverage_k - 1 if enforce_coverage else 0, n - 2))
+        fixed_ids, fixed_shifts = None, None
+        if mode == "fixed_rotation":
+            try:
+                raw_ids = request.form.get("fixed_household_order") or get_setting("fixed_household_order", "")
+                raw_shifts = request.form.get("fixed_offset_order") or get_setting("fixed_offset_order", "")
+                fixed_ids = [int(x.strip()) for x in raw_ids.split(",") if x.strip()] if raw_ids else None
+                fixed_shifts = [int(x.strip()) for x in raw_shifts.split(",") if x.strip()] if raw_shifts else None
+            except ValueError:
+                raise AssignmentInfeasibleError("Fixed rotation requires comma-separated numeric IDs.")
+        mapping, draw_info = build_candidate(
+            family_ids, current_year, anchor_year, mode, cycle_secret,
+            lookback, coverage_k, enforce_coverage, history_by_year,
+            preferences=requested, priorities=priorities,
+            rotation_salt=get_setting("rotation_salt", ""),
+            official_exists=has_published_years(),
+            fixed_household_order=fixed_ids,
+            fixed_offset_order=fixed_shifts)
         if mode in ("shuffled_rotation", "shuffled_repeating_rotation"):
-            history_by_year = confirmed_history_by_year(get_db(), current_year, lookback)
-            persisted_salt = get_setting("rotation_salt", "")
-            official_exists = has_published_years()
-            chosen_salt = None
-
-            if persisted_salt:
-                planned = lambda yr: shuffled_repeating_rotation(
-                    family_ids, yr, anchor_year, cycle_secret, salt=persisted_salt)
-                boundary_issues = find_boundary_conflicts(
-                    planned, history_by_year, current_year, lookback)
-                if boundary_issues:
-                    if official_exists:
-                        flash("The saved official rotation conflicts with the imported historical lookback. "
-                              "Published rotation cannot be silently reseeded. Review the history or adjust the rules.",
-                              "error")
-                        return redirect(url_for("admin.dashboard"))
-                else:
-                    chosen_salt = persisted_salt
-
-            if chosen_salt is None:
-                if official_exists:
-                    flash("An official draw already exists, but its stable rotation salt is missing. "
-                          "Refusing to silently choose a new production schedule.", "error")
-                    return redirect(url_for("admin.dashboard"))
-                if requested:
-                    chosen_salt = choose_preferred_rotation_salt(
-                        family_ids, current_year, anchor_year, cycle_secret,
-                        history_by_year, lookback, requested, priorities, max_candidates=10000)
-                else:
-                    chosen_salt = find_boundary_safe_salt(
-                        family_ids, current_year, anchor_year, cycle_secret,
-                        history_by_year, lookback, max_candidates=10000)
-                if chosen_salt is None:
-                    flash("No shuffled rotation satisfied the historical boundary for all upcoming years "
-                          f"within the {lookback}-year no-repeat limit. "
-                          "Adjust the lookback or verified history; no official assignments were generated.",
-                          "error")
-                    return redirect(url_for("admin.dashboard"))
-                set_setting("rotation_salt", chosen_salt)
-                set_setting("roster_anchor_hash", compute_roster_hash(family_ids))
-
-            mapping = shuffled_repeating_rotation(
-                family_ids, current_year, anchor_year, cycle_secret, salt=chosen_salt)
-
-        elif mode == "fixed_rotation":
-            raw_h = request.form.get("fixed_household_order") or get_setting("fixed_household_order", "")
-            raw_o = request.form.get("fixed_offset_order") or get_setting("fixed_offset_order", "")
-
-            try:
-                h_order = [int(x.strip()) for x in raw_h.split(",") if x.strip()]
-            except ValueError:
-                h_order = []
-            try:
-                o_order = [int(x.strip()) for x in raw_o.split(",") if x.strip()]
-            except ValueError:
-                o_order = []
-
-            if not h_order:
-                h_order = sorted(family_ids)
-            if not o_order:
-                o_order = list(range(1, n))
-
-            is_valid, errs = validate_fixed_rotation_config(h_order, o_order, family_ids)
-            if not is_valid:
-                flash(f"Fixed rotation configuration error: {' '.join(errs)}", "error")
-                return redirect(url_for("admin.dashboard"))
-
-            mapping = fixed_rotation(h_order, o_order, current_year, anchor_year)
-            set_setting("fixed_household_order", ",".join(str(i) for i in h_order))
-            set_setting("fixed_offset_order", ",".join(str(i) for i in o_order))
-            history_by_year = confirmed_history_by_year(get_db(), current_year, lookback)
-            conflicts = find_boundary_conflicts(
-                lambda yr: fixed_rotation(h_order, o_order, yr, anchor_year),
-                history_by_year, current_year, lookback)
-            if conflicts:
-                c_givers = ", ".join(family_map.get(g, f"#{g}") for _, g, _, _ in conflicts[:2])
-                flash(
-                    f"Fixed rotation for {current_year} conflicts with the requested {lookback}-year lookback constraint "
-                    f"for family ({c_givers}). Refusing to create assignments that violate explicit requested constraints. "
-                    "Adjust fixed offset order, reduce lookback, or switch to Shuffled Repeating Rotation.",
-                    "error"
-                )
-                return redirect(url_for("admin.dashboard"))
-
-        elif mode == "predictable_rotation":
-            mapping = predictable_rotation(family_ids, current_year, anchor_year)
-            history_by_year = confirmed_history_by_year(get_db(), current_year, lookback)
-            conflicts = find_boundary_conflicts(
-                lambda yr: predictable_rotation(family_ids, yr, anchor_year),
-                history_by_year, current_year, lookback)
-            if conflicts:
-                c_givers = ", ".join(family_map.get(g, f"#{g}") for _, g, _, _ in conflicts[:2])
-                flash(
-                    f"Predictable rotation for {current_year} violates the requested {lookback}-year lookback constraint "
-                    f"for family ({c_givers}). Refusing to create assignments that violate explicit requested constraints. "
-                    "Reduce lookback or switch to Uniform Random.",
-                    "error"
-                )
-                return redirect(url_for("admin.dashboard"))
-        elif mode == "random_lookahead":
-            historical = confirmed_history_by_year(get_db(), current_year, max(lookback, coverage_k - 1 if enforce_coverage else 0, n - 2))
-            mapping = plan_cycle(family_ids, current_year, anchor_year, cycle_secret,
-                                 historical, lookback, coverage_k if enforce_coverage else None,
-                                 requested, priorities)[current_year]
-        elif mode == "randomized_cycle":
-            mapping = randomized_coverage_cycle(family_ids, current_year, anchor_year, cycle_secret)
-            conflicts = validate_mapping_against_history(mapping, history_disallowed)
-            if conflicts and lookback > 0:
-                c_givers = ", ".join(family_map.get(g, f"#{g}") for g, _ in conflicts[:2])
-                flash(
-                    f"Randomized cycle for {current_year} conflicts with the requested {lookback}-year lookback constraint "
-                    f"for family ({c_givers}). Refusing to create assignments that violate explicit requested constraints. "
-                    "Reduce lookback or switch to Uniform Random.",
-                    "error"
-                )
-                return redirect(url_for("admin.dashboard"))
-        elif mode == "uniform_random":
-            mapping = (
-                best_random_matching(family_ids, history_disallowed, requested, priorities)
-                if requested else uniform_random_derangement(family_ids, history_disallowed)
-            )
-        else:
-            flash(f"Unknown assignment mode: {mode}", "error")
-            return redirect(url_for("admin.dashboard"))
+            set_setting("rotation_salt", draw_info["rotation_salt"])
+            set_setting("roster_anchor_hash", compute_roster_hash(family_ids))
+        if mode == "fixed_rotation":
+            set_setting("fixed_household_order", ",".join(str(x) for x in draw_info["fixed_household_order"]))
+            set_setting("fixed_offset_order", ",".join(str(x) for x in draw_info["fixed_offset_order"]))
 
         # Save settings used
         set_setting("assignment_mode", mode)
