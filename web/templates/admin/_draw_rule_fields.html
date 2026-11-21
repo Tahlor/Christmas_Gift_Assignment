@@ -1,0 +1,43 @@
+{% macro draw_rule_fields(prefix, mode, no_repeat_years, coverage_window_k, enforce_sliding_coverage, fixed_household_order, fixed_offset_order, active_families) %}
+<div class="ui-rule-pair">
+  <div class="ui-rule-field">
+    <strong>Avoid repeat recipients</strong>
+    <label for="{{ prefix }}_no_repeat">Don't give to the same family from the previous
+      <input id="{{ prefix }}_no_repeat" type="number" name="no_repeat_years" min="0" value="{{ no_repeat_years }}" class="form-control ui-inline-number" required> years.
+    </label>
+  </div>
+  <div class="ui-rule-field">
+    <strong>Give to everyone</strong>
+    <label for="{{ prefix }}_coverage_k">Each family gives to all others within every
+      <input id="{{ prefix }}_coverage_k" type="number" name="coverage_window_k" min="1" value="{{ coverage_window_k }}" class="form-control ui-inline-number" required> years.
+    </label>
+    <input type="hidden" name="enforce_sliding_coverage" value="0">
+    <label class="ui-rule-check"><input type="checkbox" name="enforce_sliding_coverage" value="1" {{ 'checked' if enforce_sliding_coverage else '' }}> Guarantee coverage in every rolling window</label>
+  </div>
+</div>
+<div class="ui-method-group">
+  <label for="{{ prefix }}_assignment_mode" class="form-label">How should families be matched?</label>
+  <select id="{{ prefix }}_assignment_mode" name="assignment_mode" class="form-control" data-method-selector>
+    <option value="shuffled_rotation" {{ 'selected' if mode in ('shuffled_rotation','shuffled_repeating_rotation') else '' }}>Shuffled repeating rotation</option>
+    <option value="fixed_rotation" {{ 'selected' if mode == 'fixed_rotation' else '' }}>Custom fixed rotation</option>
+    <option value="uniform_random" {{ 'selected' if mode == 'uniform_random' else '' }}>Random each year (no coverage guarantee)</option>
+    <option value="random_lookahead" {{ 'selected' if mode == 'random_lookahead' else '' }}>Random shuffle with lookahead</option>
+    <option value="randomized_cycle" {{ 'selected' if mode == 'randomized_cycle' else '' }}>Legacy shuffled cycles</option>
+  </select>
+  <div class="method-explainer" data-method-explainer aria-live="polite">
+    <p>Every mode uses the same saved rules and historical assignments.</p>
+  </div>
+</div>
+<details class="ui-config-drawer" data-fixed-config hidden>
+  <summary>Customize fixed rotation</summary>
+  <div class="ui-field-grid">
+    <label>Family ID order
+      <input class="form-control" type="text" name="fixed_household_order" value="{{ fixed_household_order or active_families|map(attribute='id')|join(',') }}" placeholder="1,2,3,4,5">
+    </label>
+    <label>Year-by-year shifts
+      <input class="form-control" type="text" name="fixed_offset_order" value="{{ fixed_offset_order or '1,2,3,4' }}" placeholder="1,2,3,4">
+    </label>
+  </div>
+  <p class="ui-small-note">IDs: {% for f in active_families %}{{ f.id }} = {{ f.name }}{% if not loop.last %}; {% endif %}{% endfor %}. Include each family and each shift exactly once.</p>
+</details>
+{% endmacro %}
