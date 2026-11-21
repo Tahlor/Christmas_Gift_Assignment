@@ -38,7 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const form = selector.closest("form");
     const explainer = form && form.querySelector("[data-method-explainer]");
     const fixed = form && form.querySelector("[data-fixed-config]");
-    const coverage = form && form.querySelector('input[name="enforce_sliding_coverage"]');
+    const coverage = form && form.querySelector('input[name="enforce_sliding_coverage"][type="checkbox"]');
     const update = () => {
       const description = methods[selector.value] || methods.shuffled_rotation;
       if (explainer) {
