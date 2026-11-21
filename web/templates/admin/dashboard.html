@@ -50,6 +50,7 @@
   </div>
 
   <div style="padding: 16px;">
+    <p class="ui-test-scope">{{ 'Uses the real roster, saved history, preferences and private production seed.' if test_sim_data.is_official_configuration else 'Experimental sandbox: altered year, roster or seed. These results do NOT validate the actual official draw.' }} Shared rules: {{ test_sim_data.lookback }}-year no repeat; {{ test_sim_data.coverage_k }}-year {{ 'rolling guarantee' if test_sim_data.enforce_coverage else 'coverage target only' }}.</p>
     {% if test_sim_data.error_message %}
     <div class="alert alert-error" style="margin-bottom: 0;">
       <strong>Simulation Infeasible:</strong> {{ test_sim_data.error_message }}
@@ -108,7 +109,7 @@
     <h3 class="ui-test-result-title">{{ '100 independent candidate draws for ' ~ test_sim_data.year if test_sim_data.sim_type == 'trials_100' else '100 consecutive simulated years: ' ~ test_sim_data.year ~ '–' ~ (test_sim_data.year + 99) }}</h3>
     <p class="ui-small-note">
       {% if test_sim_data.sim_type == 'trials_100' %}
-      The same year, participating families, verified history, lookback, coverage and preferences were tested 100 times with different random choices. This <strong>does not</strong> simulate 100 future Christmases or guarantee identical random recipients when preparing the official draw.
+      The same year, participating families, verified history, lookback, coverage and preferences were tested 100 times. Random methods explore alternative choices; fixed/locked rotations may correctly produce the same matching every time. This <strong>does not</strong> simulate 100 future Christmases or guarantee identical random recipients when preparing the official draw.
       {% else %}
       A single hypothetical future from {{ test_sim_data.year }} through {{ test_sim_data.year + 99 }}. The same five-household roster is assumed throughout, so this is a long-term stress test, <strong>not</strong> 100 independent current-year draws.
       {% endif %}
@@ -136,11 +137,11 @@
       <summary>Advanced: recipient frequency table (valid draws only)</summary>
       <p class="ui-small-note">Each cell counts how often one household drew another in the valid simulations. A dash means zero; self-assignments are never allowed. This is a diagnostic, not the official secret assignment.</p>
       <div class="table-responsive"><table class="table ui-matrix-table">
-        <thead><tr><th>Giver</th>{% for rec in test_sim_data.sim_roster %}<th>{{ test_sim_data.family_map[rec.id] }}</th>{% endfor %}</tr></thead>
+        <thead><tr><th>Giver</th>{% for rec in test_sim_data.sim_roster %}<th>{{ test_sim_data.family_map[rec.id|string] }}</th>{% endfor %}</tr></thead>
         <tbody>{% for giver in test_sim_data.sim_roster %}
-        <tr><th>{{ test_sim_data.family_map[giver.id] }}</th>
+        <tr><th>{{ test_sim_data.family_map[giver.id|string] }}</th>
           {% for rec in test_sim_data.sim_roster %}
-          {% set count = test_sim_data.batch_result.matrix.get(giver.id, {}).get(rec.id, 0) %}
+          {% set count = test_sim_data.batch_result.matrix.get(giver.id|string, {}).get(rec.id|string, 0) %}
           <td>{{ count if count else '—' }}</td>
           {% endfor %}
         </tr>
@@ -168,6 +169,7 @@
 
   <form id="shared-test-form" method="POST" action="{{ url_for('admin.test_lab') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="apply_shared_config" value="1">
 
     
     <p class="ui-small-note"><strong>Shared rules.</strong> These same settings are used by Official. Running a test updates the shared settings; it never creates assignments or sends email.</p>
