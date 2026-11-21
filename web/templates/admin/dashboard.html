@@ -50,6 +50,9 @@
   </div>
 
   <div style="padding: 16px;">
+    {% if test_result_stale %}
+    <p class="ui-test-warning"><strong>Results out of date.</strong> Shared settings, history or a recipient request changed since this test. Run it again before preparing assignments.</p>
+    {% endif %}
     <p class="ui-test-scope">{{ 'Uses the real roster, saved history, preferences and private production seed.' if test_sim_data.is_official_configuration else 'Experimental sandbox: altered year, roster or seed. These results do NOT validate the actual official draw.' }} Shared rules: {{ test_sim_data.lookback }}-year no repeat; {{ test_sim_data.coverage_k }}-year {{ 'rolling guarantee' if test_sim_data.enforce_coverage else 'coverage target only' }}.</p>
     {% if test_sim_data.error_message %}
     <div class="alert alert-error" style="margin-bottom: 0;">
@@ -178,7 +181,7 @@
       <summary>Advanced sandbox: try another year, seed or roster</summary>
       <div class="ui-field-grid">
         <label>Test seed <input class="form-control" type="text" name="test_seed" value="" placeholder="Blank = official private seed"></label>
-        <label>Year <input class="form-control" type="number" name="year" value="{{ test_sim_data.year if test_sim_data else current_year }}" min="1900" max="2200"></label>
+        <label>Year <input class="form-control" type="number" name="year" value="{{ current_year }}" min="1900" max="2200"></label>
         <input type="hidden" name="anchor_year" value="{{ anchor_year }}">
         <label>Families to test
           <select class="form-control" name="roster_choice">
@@ -652,6 +655,10 @@
     {% if not feasibility.is_feasible %}
     <label class="ui-constraint-optin"><input type="checkbox" name="waiver" value="1"> Use the suggested feasible limits instead of the impossible settings above.</label>
     {% endif %}
+    <div class="ui-official-config-actions">
+      <button type="submit" class="btn btn-secondary" formaction="{{ url_for('admin.save_shared_draw_settings') }}">Save shared rules (no draw)</button>
+      <a class="btn btn-secondary" href="{{ url_for('admin.dashboard', mode='test') }}">Test these settings</a>
+    </div>
     <button type="submit" class="btn btn-primary ui-primary-action" data-confirm="Prepare and securely store real assignments? They will remain hidden and no emails will be sent.">Prepare sealed assignments</button>
   </form>
 </div>
